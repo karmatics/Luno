@@ -3,6 +3,83 @@ const path = require("path");
 const { execSync } = require("child_process");
 
 class LunoServer {
+  static async handleAllCode(req, res, url) {
+    try {
+      const targetProj = (url && url.searchParams && url.searchParams.get('project')) || 'Luno';
+      const includeProjectLib = (url && url.searchParams && url.searchParams.get('projectLibrary') === 'true');
+      const includeAllLib = (url && url.searchParams && url.searchParams.get('allLibrary') === 'true');
+
+      const projDir = LunoServer.resolveProjectBaseDir(targetProj);
+      const filesMap = {};
+      const manifest = [];
+
+      function scanTextFiles(dir, relBase = '') {
+        if (!fs.existsSync(dir)) return;
+        const list = fs.readdirSync(dir, { withFileTypes: true });
+        for (const it of list) {
+          if (it.name.startsWith('.') || it.name === 'node_modules') continue;
+          const currentRel = relBase ? (relBase + '/' + it.name) : it.name;
+          const fullP = path.join(dir, it.name);
+          if (it.isDirectory()) {
+            scanTextFiles(fullP, currentRel);
+          } else {
+            const ext = path.extname(it.name).toLowerCase();
+            const textExts = ['.js', '.mjs', '.json', '.html', '.htm', '.css', '.svg', '.md', '.txt'];
+            if (textExts.includes(ext)) {
+              try {
+                const content = fs.readFileSync(fullP, 'utf8');
+                const key = targetProj + '/' + currentRel;
+                manifest.push(key);
+                filesMap[key] = content;
+              } catch(e) {}
+            }
+          }
+        }
+      }
+
+      scanTextFiles(projDir, '');
+
+      // Include declared project libraries
+      if (includeProjectLib || includeAllLib) {
+        const libraryDir = path.join(LunoServer.getWebRootDir(), 'Library');
+        const lunoJsonP = path.join(projDir, 'luno.json');
+        let libsToInclude = [];
+
+        if (includeAllLib && fs.existsSync(libraryDir)) {
+          libsToInclude = fs.readdirSync(libraryDir).filter(f => f.endsWith('.js'));
+        } else if (fs.existsSync(lunoJsonP)) {
+          try {
+            const meta = JSON.parse(fs.readFileSync(lunoJsonP, 'utf8'));
+            libsToInclude = Array.isArray(meta.library) ? meta.library : [];
+          } catch(e) {}
+        }
+
+        libsToInclude.forEach(lib => {
+          const cleanLib = lib.replace(/^(?:Library|library)\//i, '');
+          const libFull = path.join(libraryDir, cleanLib);
+          if (fs.existsSync(libFull)) {
+            try {
+              const libContent = fs.readFileSync(libFull, 'utf8');
+              const key = 'Library/' + cleanLib;
+              if (!manifest.includes(key)) manifest.push(key);
+              filesMap[key] = libContent;
+            } catch(e) {}
+          }
+        });
+      }
+
+      LunoServer.sendJSON(res, 200, {
+        success: true,
+        activeProjectName: targetProj,
+        activeRootDir: projDir,
+        manifest: manifest,
+        filesMap: filesMap
+      });
+    } catch(err) {
+      LunoServer.sendJSON(res, 500, { success: false, error: err.message, stack: err.stack });
+    }
+  }
+
   static getRootDir() {
     if (!LunoServer._rootDir) {
       const envRoot = process.env.LUNO_ROOT || process.env.WORKSPACE_ROOT;

@@ -444,16 +444,45 @@ class ClientAppUI {
     var m = typeof LunoUIComponents !== 'undefined' ? LunoUIComponents.makeElement : null;
 
     container.innerHTML = '';
-    var verText = (typeof LunoVersion !== 'undefined') ? LunoVersion.getBadgeText() : 'v3.6.4';
-    var mainBox = m('div', { style: { fontFamily: 'monospace', padding: '0.6rem', maxWidth: '100vw', width: '100%', margin: '0 auto', minHeight: '100vh', display: 'flex', flexDirection: 'column', gap: '0.65rem', boxSizing: 'border-box', overflowX: 'hidden' } });
+    var verText = (typeof LunoVersion !== 'undefined') ? LunoVersion.getBadgeText() : 'v3.7.7';
+
+    // Desktop landscape comfortable centered container (max-width: 1040px)
+    var mainBox = m('div', {
+      style: {
+        fontFamily: 'monospace',
+        padding: '0.75rem 1rem',
+        maxWidth: '1040px',
+        width: '100%',
+        margin: '0 auto',
+        minHeight: '100vh',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '0.75rem',
+        boxSizing: 'border-box'
+      }
+    });
 
     var header = (typeof LunoSpaDock !== 'undefined' && LunoSpaDock.renderHeaderNav) ? LunoSpaDock.renderHeaderNav('workspace') : m('header', {}, 'Luno Home');
     var telemetryDrawer = m('div', { id: 'luno-telemetry-drawer-container' });
 
+    // Responsive Dual-Column Row for Desktop: Outbox and Inbox sit side-by-side
+    var dualHeroRow = m('div', {
+      id: 'luno-hero-dual-row',
+      style: {
+        display: 'flex',
+        flexWrap: 'wrap',
+        gap: '0.85rem',
+        width: '100%',
+        alignItems: 'flex-start'
+      }
+    },
+      m('div', { style: { flex: '1 1 380px', minWidth: '320px', display: 'flex', flexDirection: 'column' } }, ClientAppUI.renderOutboxCard(m)),
+      m('div', { style: { flex: '1 1 380px', minWidth: '320px', display: 'flex', flexDirection: 'column' } }, ClientAppUI.renderInboxCard(m))
+    );
+
     mainBox.appendChild(header);
     mainBox.appendChild(ClientAppUI.renderStarterPanel(m));
-    mainBox.appendChild(ClientAppUI.renderOutboxCard(m));
-    mainBox.appendChild(ClientAppUI.renderInboxCard(m));
+    mainBox.appendChild(dualHeroRow);
     mainBox.appendChild(telemetryDrawer);
     mainBox.appendChild(ClientAppUI.renderOutputFeedbackCard(m));
     mainBox.appendChild(ClientAppUI.renderQuestionAccent(m));

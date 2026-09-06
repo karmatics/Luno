@@ -159,144 +159,147 @@ class OutboxQueue {
   }
 
   static bundleAndQueueCodebase(filesMap, manifest, projName, options) {
-        var opts = options || {};
-        var pName = projName || 'Project';
-        var maxBytes = OutboxQueue.getMaxPackageSize();
-        var includeInstructions = opts.includeInstructions !== false;
-        var includeProjectLibrary = (opts.includeProjectLibrary !== false);
-        var includeAllLibrary = Boolean(opts.includeAllLibrary);
-        var includeTopology = opts.includeTopology !== false;
+    var opts = options || {};
+    var pName = projName || 'Project';
+    var maxBytes = Math.max(1500000, OutboxQueue.getMaxPackageSize());
+    var includeInstructions = opts.includeInstructions !== false;
+    var includeProjectLibrary = (opts.includeProjectLibrary !== false);
+    var includeAllLibrary = Boolean(opts.includeAllLibrary);
+    var includeTopology = opts.includeTopology !== false;
 
-        var SCRIPT_WORD = 'scr' + 'ipt';
-        var STYLE_WORD = 'sty' + 'le';
-        var TEMPLATE_WORD = 'temp' + 'late';
-        var SVG_WORD = 'sv' + 'g';
+    var SCRIPT_WORD = 'scr' + 'ipt';
+    var STYLE_WORD = 'sty' + 'le';
+    var TEMPLATE_WORD = 'temp' + 'late';
+    var SVG_WORD = 'sv' + 'g';
 
-        var closeStyle = '</' + STYLE_WORD + '>';
-        var closeTemplate = '</' + TEMPLATE_WORD + '>';
-        var closeScript = '</' + SCRIPT_WORD + '>';
-        var closeSvg = '</' + SVG_WORD + '>';
+    var closeStyle = '</' + STYLE_WORD + '>';
+    var closeTemplate = '</' + TEMPLATE_WORD + '>';
+    var closeScript = '</' + SCRIPT_WORD + '>';
+    var closeSvg = '</' + SVG_WORD + '>';
 
-        var escapeStyle = '<\\/' + STYLE_WORD + '>';
-        var escapeTemplate = '<\\/' + TEMPLATE_WORD + '>';
-        var escapeScript = '<\\/' + SCRIPT_WORD + '>';
-        var escapeSvg = '<\\/' + SVG_WORD + '>';
+    var escapeStyle = '<\\/' + STYLE_WORD + '>';
+    var escapeTemplate = '<\\/' + TEMPLATE_WORD + '>';
+    var escapeScript = '<\\/' + SCRIPT_WORD + '>';
+    var escapeSvg = '<\\/' + SVG_WORD + '>';
 
-        var instructionPreamble = '';
-        if (includeInstructions && typeof LunoPromptInstructions !== 'undefined') {
-          instructionPreamble = LunoPromptInstructions.assembleFullInstructions() + '\n';
+    var instructionPreamble = '';
+    if (includeInstructions && typeof LunoPromptInstructions !== 'undefined') {
+      instructionPreamble = LunoPromptInstructions.assembleFullInstructions() + '\n';
+    }
+
+    var topologyHeader = '';
+    if (includeTopology) {
+      var topologyLines = [
+        '================================================================================',
+        '🗺️ CODEBASE CLASS & METHOD TOPOLOGY INDEX [' + pName + ']',
+        '================================================================================'
+      ];
+      var foundAny = false;
+
+      for (var fPath in filesMap) {
+        if (!Object.prototype.hasOwnProperty.call(filesMap, fPath)) continue;
+        var fContent = filesMap[fPath];
+        if (!fContent || (!fPath.endsWith('.js') && !fPath.endsWith('.mjs'))) continue;
+
+        var classesInFile = [];
+        if (typeof LunoClassPatcher !== 'undefined' && typeof LunoClassPatcher.extractFileTopology === 'function') {
+          classesInFile = LunoClassPatcher.extractFileTopology(fContent, fPath);
         }
 
-        var topologyHeader = '';
-        if (includeTopology) {
-          var topologyLines = [
-            '================================================================================',
-            '🗺️ CODEBASE CLASS & METHOD TOPOLOGY INDEX [' + pName + ']',
-            '================================================================================'
-          ];
-          var foundAny = false;
-
-          for (var fPath in filesMap) {
-            if (!Object.prototype.hasOwnProperty.call(filesMap, fPath)) continue;
-            var fContent = filesMap[fPath];
-            if (!fContent || (!fPath.endsWith('.js') && !fPath.endsWith('.mjs'))) continue;
-
-            var classesInFile = [];
-            if (typeof LunoClassPatcher !== 'undefined' && typeof LunoClassPatcher.extractFileTopology === 'function') {
-              classesInFile = LunoClassPatcher.extractFileTopology(fContent, fPath);
+        if (classesInFile && classesInFile.length > 0) {
+          classesInFile.forEach(function(cls) {
+            var methods = cls.methods || [];
+            var unverifiedTag = cls.isUnverified ? ' ⚠️ unverified (parse error) — regex fallback' : '';
+            foundAny = true;
+            topologyLines.push('📁 ' + fPath + ' ➔ class ' + cls.className + unverifiedTag + ' (' + methods.length + ' methods):');
+            if (methods.length > 0) {
+              topologyLines.push(methods.slice(0, 15).join('\n') + (methods.length > 15 ? ('\n  • ... (' + (methods.length - 15) + ' more methods)') : ''));
             }
-
-            if (classesInFile && classesInFile.length > 0) {
-              classesInFile.forEach(function(cls) {
-                var methods = cls.methods || [];
-                var unverifiedTag = cls.isUnverified ? ' ⚠️ unverified (parse error) — regex fallback' : '';
-                foundAny = true;
-                topologyLines.push('📁 ' + fPath + ' ➔ class ' + cls.className + unverifiedTag + ' (' + methods.length + ' methods):');
-                if (methods.length > 0) {
-                  topologyLines.push(methods.slice(0, 15).join('\n') + (methods.length > 15 ? ('\n  • ... (' + (methods.length - 15) + ' more methods)') : ''));
-                }
-              });
-            }
-          }
-
-          if (foundAny) {
-            topologyLines.push('================================================================================\n');
-            topologyHeader = topologyLines.join('\n') + '\n';
-          }
+          });
         }
-
-        var baseHeader = instructionPreamble + topologyHeader;
-        var parts = [];
-        var currentPartText = baseHeader;
-        var currentPartFiles = 0;
-        var totalFiles = 0;
-
-        for (var rawPath in filesMap) {
-          if (!Object.prototype.hasOwnProperty.call(filesMap, rawPath)) continue;
-
-          var normPath = rawPath.replace(/\\/g, '/').replace(/^\/+/, '');
-          var canonicalPath = normPath;
-
-          if (canonicalPath.startsWith('Library/') || canonicalPath.startsWith('library/')) {
-            if (!includeAllLibrary && !includeProjectLibrary && pName.toLowerCase() !== 'library') continue;
-            canonicalPath = 'Library/' + canonicalPath.replace(/^(?:Library|library)\//, '');
-          } else if (!canonicalPath.startsWith(pName + '/')) {
-            canonicalPath = pName + '/' + canonicalPath;
-          }
-
-          var content = filesMap[rawPath];
-          var ext = canonicalPath.split('.').pop().toLowerCase();
-          var safeContent = content || '';
-          var block = '';
-
-          if (ext === 'css') {
-            safeContent = safeContent.split(closeStyle).join(escapeStyle);
-            block = '<' + STYLE_WORD + ' data-file="' + canonicalPath + '">\n' + safeContent + '\n' + closeStyle + '\n\n';
-          } else if (ext === 'html' || ext === 'htm') {
-            safeContent = safeContent.split(closeTemplate).join(escapeTemplate);
-            block = '<' + TEMPLATE_WORD + ' data-file="' + canonicalPath + '">\n' + safeContent + '\n' + closeTemplate + '\n\n';
-          } else if (ext === 'json') {
-            safeContent = safeContent.split(closeScript).join(escapeScript);
-            block = '<' + SCRIPT_WORD + ' type="application/json" data-file="' + canonicalPath + '">\n' + safeContent + '\n' + closeScript + '\n\n';
-          } else if (ext === 'md' || ext === 'txt') {
-            safeContent = safeContent.split(closeScript).join(escapeScript);
-            block = '<' + SCRIPT_WORD + ' type="text/plain" data-file="' + canonicalPath + '">\n' + safeContent + '\n' + closeScript + '\n\n';
-          } else if (ext === 'svg') {
-            safeContent = safeContent.split(closeSvg).join(escapeSvg);
-            block = '<' + SVG_WORD + ' data-file="' + canonicalPath + '">\n' + safeContent + '\n' + closeSvg + '\n\n';
-          } else {
-            safeContent = safeContent.split(closeScript).join(escapeScript);
-            block = '<' + SCRIPT_WORD + ' data-file="' + canonicalPath + '">\n' + safeContent + '\n' + closeScript + '\n\n';
-          }
-
-          totalFiles++;
-
-          if ((currentPartText.length + block.length) > maxBytes && currentPartFiles > 0) {
-            parts.push(currentPartText.trim() + '\n\n');
-            currentPartText = baseHeader + block;
-            currentPartFiles = 1;
-          } else {
-            currentPartText += block;
-            currentPartFiles++;
-          }
-        }
-
-        if (currentPartFiles > 0) {
-          parts.push(currentPartText.trim() + '\n\n');
-        }
-
-        OutboxQueue.queue = OutboxQueue.queue.filter(function(i) {
-          if (!i || !i.title) return false;
-          return !(i.title.startsWith('Codebase Package: ' + pName) || i.title.startsWith('Smart Bundle: ' + pName));
-        });
-
-        for (var i = 0; i < parts.length; i++) {
-          var partTitle = 'Codebase Package: ' + pName + (parts.length > 1 ? (' (Part ' + (i + 1) + '/' + parts.length + ')') : '');
-          OutboxQueue.addBundle(partTitle, parts[i], { priority: 'high' });
-        }
-
-        return { fileCount: totalFiles, totalParts: parts.length, projTitle: pName };
       }
+
+      if (foundAny) {
+        topologyLines.push('================================================================================\n');
+        topologyHeader = topologyLines.join('\n') + '\n';
+      }
+    }
+
+    var primaryHeader = instructionPreamble + topologyHeader;
+    var parts = [];
+    var currentPartText = primaryHeader;
+    var currentPartFiles = 0;
+    var totalFiles = 0;
+
+    for (var rawPath in filesMap) {
+      if (!Object.prototype.hasOwnProperty.call(filesMap, rawPath)) continue;
+
+      var normPath = rawPath.replace(/\\/g, '/').replace(/^\/+/, '');
+      var canonicalPath = normPath;
+
+      if (canonicalPath.startsWith('Library/') || canonicalPath.startsWith('library/')) {
+        if (!includeAllLibrary && !includeProjectLibrary && pName.toLowerCase() !== 'library') continue;
+        canonicalPath = 'Library/' + canonicalPath.replace(/^(?:Library|library)\//, '');
+      } else if (!canonicalPath.startsWith(pName + '/')) {
+        canonicalPath = pName + '/' + canonicalPath;
+      }
+
+      var content = filesMap[rawPath];
+      var ext = canonicalPath.split('.').pop().toLowerCase();
+      var safeContent = content || '';
+      var block = '';
+
+      if (ext === 'css') {
+        safeContent = safeContent.split(closeStyle).join(escapeStyle);
+        block = '<' + STYLE_WORD + ' data-file="' + canonicalPath + '">\n' + safeContent + '\n' + closeStyle + '\n\n';
+      } else if (ext === 'html' || ext === 'htm') {
+        safeContent = safeContent.split(closeTemplate).join(escapeTemplate);
+        block = '<' + TEMPLATE_WORD + ' data-file="' + canonicalPath + '">\n' + safeContent + '\n' + closeTemplate + '\n\n';
+      } else if (ext === 'json') {
+        safeContent = safeContent.split(closeScript).join(escapeScript);
+        block = '<' + SCRIPT_WORD + ' type="application/json" data-file="' + canonicalPath + '">\n' + safeContent + '\n' + closeScript + '\n\n';
+      } else if (ext === 'md' || ext === 'txt') {
+        safeContent = safeContent.split(closeScript).join(escapeScript);
+        block = '<' + SCRIPT_WORD + ' type="text/plain" data-file="' + canonicalPath + '">\n' + safeContent + '\n' + closeScript + '\n\n';
+      } else if (ext === 'svg') {
+        safeContent = safeContent.split(closeSvg).join(escapeSvg);
+        block = '<' + SVG_WORD + ' data-file="' + canonicalPath + '">\n' + safeContent + '\n' + closeSvg + '\n\n';
+      } else {
+        safeContent = safeContent.split(closeScript).join(escapeScript);
+        block = '<' + SCRIPT_WORD + ' data-file="' + canonicalPath + '">\n' + safeContent + '\n' + closeScript + '\n\n';
+      }
+
+      totalFiles++;
+
+      if ((currentPartText.length + block.length) > maxBytes && currentPartFiles > 0) {
+        parts.push(currentPartText.trim() + '\n\n');
+        var continuationHeader = '/* 📦 Codebase Package: Part ' + (parts.length + 1) + ' Continuation for [' + pName + '] */\n\n';
+        currentPartText = continuationHeader + block;
+        currentPartFiles = 1;
+      } else {
+        currentPartText += block;
+        currentPartFiles++;
+      }
+    }
+
+    if (currentPartFiles > 0) {
+      parts.push(currentPartText.trim() + '\n\n');
+    }
+
+    // Deduplicate and clear stale bundles
+    OutboxQueue.queue = OutboxQueue.queue.filter(function(i) {
+      if (!i || !i.title) return false;
+      return !(i.title.startsWith('Codebase Package: ' + pName) || i.title.startsWith('Smart Bundle: ' + pName) || i.title.startsWith('Luno Protocol Master Instructions'));
+    });
+
+    for (var i = 0; i < parts.length; i++) {
+      var partTitle = 'Codebase Package: ' + pName + (parts.length > 1 ? (' (Part ' + (i + 1) + '/' + parts.length + ')') : '');
+      OutboxQueue.addBundle(partTitle, parts[i], { priority: 'high' });
+    }
+
+    return { fileCount: totalFiles, totalParts: parts.length, projTitle: pName };
+  }
+
   static getCombinedPackageText(itemId) {
     if (OutboxQueue.queue.length === 0) return '';
 
@@ -306,16 +309,32 @@ class OutboxQueue {
     }
 
     var packageText = '';
+    var hasPreamble = false;
+    var preambleMarker = '🌙 LUNO WORKSPACE - LLM RESPONSE PROTOCOL INSTRUCTIONS';
+
     OutboxQueue.queue.forEach(function(item) {
       if (item && item.payload) {
-        if (packageText) packageText += '\n';
-        packageText += item.payload.trim() + '\n\n';
+        var p = item.payload.trim();
+        if (p.includes(preambleMarker)) {
+          if (hasPreamble) {
+            // Strip duplicate preamble from second/third items
+            var endMarkerIdx = p.indexOf('================================================================================\n\n');
+            if (endMarkerIdx !== -1) {
+              p = p.slice(endMarkerIdx + 82).trim();
+            }
+          } else {
+            hasPreamble = true;
+          }
+        }
+        if (p) {
+          if (packageText) packageText += '\n\n';
+          packageText += p;
+        }
       }
     });
 
     return packageText.trim() + '\n\n';
   }
-
   static copyPackageToClipboard(itemId) {
     if (!OutboxQueue.queue || OutboxQueue.queue.length === 0) {
       if (typeof ClientApp !== 'undefined') ClientApp.showToast('Outbox is empty!', 'info');
