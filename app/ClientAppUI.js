@@ -329,49 +329,174 @@ class ClientAppUI {
   }
 
   static renderCheckpointButton(m) {
-    var el = m || (typeof LunoUIComponents !== 'undefined' ? LunoUIComponents.makeElement : null);
-    var btn = el('button', {
-      id: 'btn-frontpage-checkpoint',
-      style: {
-        padding: '0.85rem 1.8rem',
-        background: '#161b22',
-        color: '#c9d1d9',
-        border: '1px solid #30363d',
-        borderRadius: '8px',
-        cursor: 'pointer',
-        fontFamily: 'monospace',
-        margin: '0.2rem auto 0.4rem auto',
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        justifyContent: 'center',
-        width: '100%',
-        maxWidth: '360px',
-        transition: 'transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1), border-color 0.15s ease-out, box-shadow 0.15s ease-out',
-        boxShadow: '0 4px 12px rgba(0,0,0,0.3)'
-      },
-      onclick: function() {
-        if (typeof LunoAnimationEngine !== 'undefined') {
-          var rect = btn.getBoundingClientRect();
-          LunoAnimationEngine.burstSparks(rect.left + (rect.width / 2), rect.top + (rect.height / 2), '#00f2fe', 14);
-          if (typeof LunoAnimationEngine.shutterFlash === 'function') {
-            LunoAnimationEngine.shutterFlash(btn, '#00f2fe');
-          }
+      var el = m || (typeof LunoUIComponents !== 'undefined' ? LunoUIComponents.makeElement : null);
+      var currentTarget = (typeof ClientApp !== 'undefined' && ClientApp.getTargetProject) ? ClientApp.getTargetProject() : 'Luno';
+      var uncommitted = (typeof ClientApp !== 'undefined' && ClientApp.uncommittedCount) ? ClientApp.uncommittedCount : 0;
+
+      var account = (typeof LunoDeployEngine !== 'undefined' && LunoDeployEngine.getGithubAccount) ? LunoDeployEngine.getGithubAccount() : 'karmatics';
+      var remoteName = (typeof LunoDeployEngine !== 'undefined') ? LunoDeployEngine.getRemoteRepoName(currentTarget) : currentTarget;
+      var liveUrl = 'https://' + account.toLowerCase() + '.github.io/' + remoteName + '/';
+      var localUrl = (currentTarget === 'Luno') ? '/' : ('/' + encodeURIComponent(currentTarget) + '/');
+
+      var noteInput = el('input', {
+        id: 'frontpage-checkpoint-note',
+        type: 'text',
+        placeholder: '[' + currentTarget + '] Commit message...',
+        style: {
+          width: '100%',
+          padding: '0.55rem 0.75rem',
+          background: '#0d1117',
+          color: '#00f2fe',
+          border: '1px solid #30363d',
+          borderRadius: '6px',
+          fontFamily: 'monospace',
+          fontSize: '0.78rem',
+          outline: 'none',
+          boxSizing: 'border-box'
         }
-        setTimeout(function() {
-          if (typeof LunoSpaDock !== 'undefined') {
-            LunoSpaDock.mountView('checkpoint');
+      });
+
+      var chkDeployPages = el('input', {
+        id: 'frontpage-chk-deploy-pages',
+        type: 'checkbox',
+        checked: true,
+        style: { width: '15px', height: '15px', cursor: 'pointer', accentColor: '#238636' }
+      });
+
+      var btnAction = el('button', {
+        id: 'btn-frontpage-checkpoint-exec',
+        style: {
+          width: '100%',
+          padding: '0.75rem',
+          background: '#238636',
+          color: '#ffffff',
+          border: 'none',
+          borderRadius: '6px',
+          fontWeight: 'bold',
+          fontSize: '0.88rem',
+          cursor: 'pointer',
+          fontFamily: 'monospace',
+          boxShadow: '0 4px 12px rgba(35, 134, 54, 0.3)',
+          transition: 'all 0.15s ease'
+        }
+      }, '🚀 1-Tap Checkpoint & Deploy to Pages');
+
+      chkDeployPages.onchange = function() {
+        if (chkDeployPages.checked) {
+          btnAction.textContent = '🚀 1-Tap Checkpoint & Deploy to Pages';
+          btnAction.style.background = '#238636';
+          btnAction.style.boxShadow = '0 4px 12px rgba(35, 134, 54, 0.3)';
+        } else {
+          btnAction.textContent = '📸 Save Local Git Snapshot Only';
+          btnAction.style.background = '#21262d';
+          btnAction.style.boxShadow = 'none';
+        }
+      };
+
+      btnAction.onclick = async function() {
+        btnAction.disabled = true;
+        var isDeploy = chkDeployPages.checked;
+        btnAction.textContent = isDeploy ? '🚀 Deploying...' : '📸 Saving Snapshot...';
+
+        if (typeof LunoAnimationEngine !== 'undefined') {
+          var rect = btnAction.getBoundingClientRect();
+          LunoAnimationEngine.burstSparks(rect.left + (rect.width / 2), rect.top + (rect.height / 2), isDeploy ? '#3fb950' : '#00f2fe', 14);
+        }
+
+        var note = noteInput.value.trim();
+        var msg = note || ('[' + currentTarget + '] Checkpoint ' + new Date().toLocaleString());
+
+        try {
+          var res = await LunoDeployEngine.checkpointTargetProject(currentTarget, msg, { deployToPages: isDeploy });
+          if (res && res.success) {
+            var outText = res.output || (isDeploy ? 'Deployed to GitHub Pages!' : 'Saved local git snapshot.');
+            if (typeof ClientApp !== 'undefined' && ClientApp.showFeedback) {
+              ClientApp.showFeedback('📊 CHECKPOINT & DEPLOY RESULT [' + currentTarget + ']:\n\n' + outText, 'success');
+            }
+            if (typeof ClientApp !== 'undefined' && ClientApp.showToast) {
+              ClientApp.showToast(isDeploy ? 'Deployed [' + currentTarget + '] to GitHub Pages!' : 'Recorded snapshot for [' + currentTarget + ']!', 'success', '📸');
+              ClientApp.uncommittedCount = 0;
+              await ClientApp.fetchCodebaseMetrics(currentTarget);
+            }
+            noteInput.value = '';
+          } else {
+            var errText = (res && res.error) || 'Failed to checkpoint target';
+            if (typeof ClientApp !== 'undefined' && ClientApp.showFeedback) {
+              ClientApp.showFeedback('❌ Checkpoint Error:\n\n' + errText, 'error');
+            }
           }
-        }, 180);
-      }
-    },
-      el('span', { style: { fontSize: '0.95rem', fontWeight: 'bold', color: '#f0f6fc', display: 'flex', alignItems: 'center', gap: '0.35rem' } }, '📸 Checkpoint'),
-      el('span', { id: 'checkpoint-btn-subtitle', style: { fontSize: '0.72rem', color: '#8b949e', marginTop: '0.15rem' } }, 'save in git')
-    );
+        } catch(err) {
+          if (typeof ClientApp !== 'undefined' && ClientApp.showFeedback) {
+            ClientApp.showFeedback('❌ Checkpoint Exception:\n\n' + err.message, 'error');
+          }
+        } finally {
+          btnAction.disabled = false;
+          chkDeployPages.onchange();
+        }
+      };
 
-    return btn;
-  }
+      var container = el('div', {
+        id: 'luno-target-checkpoint-card',
+        style: {
+          background: '#161b22',
+          border: '1px solid #30363d',
+          borderRadius: '10px',
+          padding: '0.85rem',
+          margin: '0.3rem auto 0.5rem auto',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '0.6rem',
+          width: '100%',
+          boxSizing: 'border-box',
+          boxShadow: '0 4px 14px rgba(0,0,0,0.3)'
+        }
+      },
+        el('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.4rem', borderBottom: '1px solid #21262d', paddingBottom: '0.4rem' } },
+          el('div', { style: { display: 'flex', alignItems: 'center', gap: '0.4rem' } },
+            el('strong', { style: { color: '#00f2fe', fontSize: '0.9rem' } }, '📸 CHECKPOINT & DEPLOY:'),
+            el('span', { style: { color: '#3fb950', fontWeight: 'bold', fontSize: '0.85rem' } }, currentTarget)
+          ),
+          el('span', {
+            id: 'checkpoint-btn-subtitle',
+            style: { fontSize: '0.72rem', color: uncommitted > 0 ? '#ff9800' : '#8b949e', fontWeight: 'bold' }
+          }, uncommitted + ' uncommitted file' + (uncommitted === 1 ? '' : 's'))
+        ),
+        noteInput,
+        el('label', {
+          style: { display: 'flex', alignItems: 'center', gap: '0.45rem', fontSize: '0.75rem', color: '#c9d1d9', cursor: 'pointer', userSelect: 'none' }
+        },
+          chkDeployPages,
+          el('span', {}, '🚀 Deploy to GitHub Pages (push remote & publish live site)')
+        ),
+        btnAction,
+        el('div', {
+          style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.4rem', paddingTop: '0.2rem', fontSize: '0.74rem' }
+        },
+          el('div', { style: { display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' } },
+            el('a', {
+              href: liveUrl,
+              target: '_blank',
+              title: liveUrl,
+              style: { color: '#58a6ff', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '0.25rem', fontWeight: 'bold' }
+            }, '🌐 Live Pages Site ↗'),
+            el('a', {
+              href: localUrl,
+              target: '_blank',
+              title: 'Open http://localhost:8080' + localUrl + ' in full window',
+              style: { color: '#7ee787', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '0.25rem', fontWeight: 'bold' }
+            }, '🖥️ Standalone Tab ↗')
+          ),
+          el('button', {
+            style: { background: 'none', border: 'none', color: '#8b949e', cursor: 'pointer', fontSize: '0.72rem', fontFamily: 'monospace', textDecoration: 'underline' },
+            onclick: function() {
+              if (typeof LunoSpaDock !== 'undefined') LunoSpaDock.mountView('projects');
+            }
+          }, 'Open in Projects Hub ▾')
+        )
+      );
 
+      return container;
+    }
   static renderDevDrawer(m) {
     var el = m || (typeof LunoUIComponents !== 'undefined' ? LunoUIComponents.makeElement : null);
     var devEditorContent = el('div', { id: 'dev-editor-content', style: { display: ClientAppUI.devEditorExpanded ? 'block' : 'none', marginTop: '0.45rem' } },
@@ -444,16 +569,18 @@ class ClientAppUI {
     var m = typeof LunoUIComponents !== 'undefined' ? LunoUIComponents.makeElement : null;
 
     container.innerHTML = '';
+    container.style.width = '100%';
+    container.style.maxWidth = '100%';
     var verText = (typeof LunoVersion !== 'undefined') ? LunoVersion.getBadgeText() : 'v3.7.7';
 
-    // Desktop landscape comfortable centered container (max-width: 1040px)
+    // Full-width responsive container filling the available browser width
     var mainBox = m('div', {
       style: {
         fontFamily: 'monospace',
-        padding: '0.75rem 1rem',
-        maxWidth: '1040px',
+        padding: '0.75rem 1.25rem',
+        maxWidth: '100%',
         width: '100%',
-        margin: '0 auto',
+        margin: '0',
         minHeight: '100vh',
         display: 'flex',
         flexDirection: 'column',
@@ -465,7 +592,7 @@ class ClientAppUI {
     var header = (typeof LunoSpaDock !== 'undefined' && LunoSpaDock.renderHeaderNav) ? LunoSpaDock.renderHeaderNav('workspace') : m('header', {}, 'Luno Home');
     var telemetryDrawer = m('div', { id: 'luno-telemetry-drawer-container' });
 
-    // Responsive Dual-Column Row for Desktop: Outbox and Inbox sit side-by-side
+    // Full-width Responsive Dual-Column Row for Outbox and Inbox
     var dualHeroRow = m('div', {
       id: 'luno-hero-dual-row',
       style: {
@@ -476,8 +603,8 @@ class ClientAppUI {
         alignItems: 'flex-start'
       }
     },
-      m('div', { style: { flex: '1 1 380px', minWidth: '320px', display: 'flex', flexDirection: 'column' } }, ClientAppUI.renderOutboxCard(m)),
-      m('div', { style: { flex: '1 1 380px', minWidth: '320px', display: 'flex', flexDirection: 'column' } }, ClientAppUI.renderInboxCard(m))
+      m('div', { style: { flex: '1 1 440px', minWidth: '280px', display: 'flex', flexDirection: 'column' } }, ClientAppUI.renderOutboxCard(m)),
+      m('div', { style: { flex: '1 1 440px', minWidth: '280px', display: 'flex', flexDirection: 'column' } }, ClientAppUI.renderInboxCard(m))
     );
 
     mainBox.appendChild(header);

@@ -54,7 +54,7 @@ class LunoSpaHeaderNav {
       }
     }
 
-  static render(activeViewKey) {
+static render(activeViewKey) {
         var activeKey = activeViewKey || 'workspace';
         if (activeKey === 'deploy') activeKey = 'projects';
 
@@ -173,6 +173,12 @@ class LunoSpaHeaderNav {
           }, ...btnContent);
         });
 
+        var cachedProjects = [];
+        try {
+          var rawCached = localStorage.getItem('luno_cached_projects_list');
+          if (rawCached) cachedProjects = JSON.parse(rawCached);
+        } catch(e) {}
+
         var projectSelect = m('select', {
           id: 'global-target-project-select',
           title: 'Switching target sets active project, focuses preview, and closes other open preview tabs.',
@@ -201,40 +207,47 @@ class LunoSpaHeaderNav {
               }
             }
           }
-        }, m('option', { value: currentTarget }, '📁 ' + currentTarget));
+        });
+
+        function populateSelectOptions(projectsList) {
+          if (!projectsList || projectsList.length === 0) {
+            projectSelect.innerHTML = '<option value="' + currentTarget + '">📁 ' + currentTarget + '</option>';
+            return;
+          }
+          var valid = projectsList.filter(function(p) { return !p.isLibrary && p.name !== 'Library'; });
+          var order = { 'BasicsWithDialogBox': 1, 'Basic3D': 2, 'AardvarkPlaylist': 3, 'Luno': 4 };
+          valid.sort(function(a, b) {
+            var rA = order[a.name] || 999;
+            var rB = order[b.name] || 999;
+            if (rA !== rB) return rA - rB;
+            return (a.name || '').localeCompare(b.name || '');
+          });
+
+          projectSelect.innerHTML = '';
+          valid.forEach(function(p) {
+            var opt = document.createElement('option');
+            opt.value = p.name;
+            opt.textContent = '📁 ' + p.name + (p.name === 'Luno' ? ' (Self-Improve)' : '');
+            if (p.name === currentTarget) opt.selected = true;
+            projectSelect.appendChild(opt);
+          });
+        }
+
+        populateSelectOptions(cachedProjects);
 
         setTimeout(async function() {
           try {
             if (typeof LunoApiClient !== 'undefined' && LunoApiClient.fetchProjectsList) {
               var data = await LunoApiClient.fetchProjectsList();
               if (data && Array.isArray(data.projects)) {
-                var activeTarget = (typeof ClientApp !== 'undefined' && ClientApp.getTargetProject) ? ClientApp.getTargetProject() : 'Luno';
-                projectSelect.innerHTML = '';
-
-                var validProjects = data.projects.filter(function(p) {
-                  return !p.isLibrary && p.name !== 'Library';
-                });
-
-                // Pinned top-3 sorting: BasicsWithDialogBox -> Basic3D -> Luno -> alphabetical
-                validProjects.sort(function(a, b) {
-                  var order = { 'BasicsWithDialogBox': 1, 'Basic3D': 2, 'Luno': 3 };
-                  var rA = order[a.name] || 999;
-                  var rB = order[b.name] || 999;
-                  if (rA !== rB) return rA - rB;
-                  return (a.name || '').localeCompare(b.name || '');
-                });
-
-                validProjects.forEach(function(p) {
-                  var opt = document.createElement('option');
-                  opt.value = p.name;
-                  opt.textContent = '📁 ' + p.name + (p.name === 'Luno' ? ' (Self-Improve)' : '');
-                  if (p.name === activeTarget) opt.selected = true;
-                  projectSelect.appendChild(opt);
-                });
+                localStorage.setItem('luno_cached_projects_list', JSON.stringify(data.projects));
+                if (projectSelect.options.length !== data.projects.length) {
+                  populateSelectOptions(data.projects);
+                }
               }
             }
           } catch (e) {}
-        }, 40);
+        }, 300);
 
         var btnSettings = m('button', {
           style: {
@@ -257,6 +270,20 @@ class LunoSpaHeaderNav {
           }
         }, '⚙️');
 
+                // Original Luno Logo Image Restored
+        var logoImg = m('img', {
+          src: (typeof LunoFileSystem !== 'undefined' && LunoFileSystem.isStaticHosting()) ? './assets/lunologo.png' : '/assets/lunologo.png',
+          alt: 'Luno',
+          style: { height: '24px', verticalAlign: 'middle', cursor: 'pointer' },
+          onclick: function() { if (typeof LunoSpaDock !== 'undefined') LunoSpaDock.mountView('workspace'); },
+          onerror: function(e) {
+            if (!e.target._retried) {
+              e.target._retried = true;
+              e.target.src = '/Luno/assets/lunologo.png';
+            }
+          }
+        });
+
         return m('header', {
           style: {
             display: 'flex',
@@ -266,11 +293,13 @@ class LunoSpaHeaderNav {
             marginBottom: '0.65rem',
             borderBottom: '1px solid #30363d',
             gap: '0.5rem',
-            flexWrap: 'wrap'
+            flexWrap: 'wrap',
+            position: 'relative',
+            zIndex: '9000'
           }
         },
-          m('div', { style: { display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' } },
-            m('span', { style: { fontSize: '1rem', fontWeight: 'bold', color: '#00f2fe' } }, '🌙 Luno'),
+          m('div', { style: { display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap' } },
+            logoImg,
             m('div', { style: { display: 'flex', alignItems: 'center', gap: '0.3rem' } },
               m('span', { style: { fontSize: '0.72rem', color: '#8b949e', fontWeight: 'bold' } }, 'Target:'),
               projectSelect
@@ -290,8 +319,9 @@ class LunoSpaHeaderNav {
             btnSettings
           )
         );
-      }
-  static cleanupProjectTab(projName) {
+}
+
+static cleanupProjectTab(projName) {
       if (!projName) return;
       if (typeof LunoSpaDock !== 'undefined' && LunoSpaDock._iframeCache && LunoSpaDock._iframeCache[projName]) {
         var holder = LunoSpaDock._iframeCache[projName];

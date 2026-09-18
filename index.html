@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>Luno Workspace</title>
+  <link rel="icon" type="image/png" href="./assets/lunologo.png">
   <style>
     html, body {
       background: #0d1117 !important;
@@ -29,12 +30,14 @@
     }
   </style>
   <script src="./app/acorn.js"></script>
-  <script src="./app/LunoLoader.js"></script>
+  <!-- Resilient Loader Script: Falls back across subpaths for GitHub Pages compatibility -->
+  <script src="/Library/LunoLoader.js" onerror="this.onerror=null; this.src='../Library/LunoLoader.js';"></script>
 </head>
 <body>
   <div id="app-root">
     <div id="boot-status">
-      <h3 style="color:#00f2fe; margin-top:0;">🌙 Initializing Luno Workspace...</h3>
+      <div style="text-align:center; margin-bottom:0.75rem;"><img src="./assets/lunologo.png" alt="Luno" style="height:36px; vertical-align:middle;"></div>
+      <h3 style="color:#00f2fe; margin-top:0; text-align:center;">Initializing Luno Workspace...</h3>
       <p style="font-size:12px; color:#8b949e;">Loading scripts from luno.json...</p>
     </div>
   </div>

@@ -156,9 +156,14 @@ class LunoSpaDock {
       }
 
       mainApp.innerHTML = '';
+      mainApp.style.width = '100%';
+      mainApp.style.maxWidth = '100%';
+
       var container = document.createElement('div');
       container.id = 'luno-spa-view-container';
-      container.style.cssText = 'font-family:monospace; padding:0.6rem; max-width:960px; margin:0 auto; min-height:100vh; background:#0d1117; color:#c9d1d9; box-sizing:border-box;';
+      // When previewing an app, minimize outer padding so the iframe can utilize the full width
+      var padStyle = isAppView ? '0.35rem 0.65rem 0 0.65rem' : '0.6rem 1.25rem';
+      container.style.cssText = 'font-family:monospace; padding:' + padStyle + '; width:100%; max-width:100%; margin:0; min-height:100vh; background:#0d1117; color:#c9d1d9; box-sizing:border-box;';
 
       var targetProj = '';
       if (isAppView) {
@@ -191,7 +196,7 @@ class LunoSpaDock {
         var isStatic = (typeof LunoFileSystem !== 'undefined' && LunoFileSystem.getActiveMode() !== 'server') || (typeof LunoLoader !== 'undefined' && LunoLoader.isStaticHosting());
         var toolbar = document.createElement('div');
         toolbar.id = 'luno-app-preview-toolbar';
-        toolbar.style.cssText = 'display:flex; justify-content:space-between; align-items:center; background:#161b22; border:1px solid #30363d; border-radius:8px; padding:0.45rem 0.75rem; margin-bottom:0.5rem; flex-wrap:wrap; gap:0.4rem; font-family:monospace;';
+        toolbar.style.cssText = 'display:flex; justify-content:space-between; align-items:center; background:#161b22; border:1px solid #30363d; border-radius:8px; padding:0.4rem 0.75rem; margin-bottom:0.4rem; flex-wrap:wrap; gap:0.4rem; font-family:monospace;';
 
         var leftInfo = document.createElement('div');
         leftInfo.style.cssText = 'display:flex; align-items:center; gap:0.4rem; font-size:0.8rem;';
@@ -220,8 +225,8 @@ class LunoSpaDock {
             window.open('/app-preview?project=' + encodeURIComponent(targetProj), '_blank');
           } else {
             var remoteRepo = (typeof LunoDeployEngine !== 'undefined') ? LunoDeployEngine.getRemoteRepoName(targetProj) : targetProj;
-            var org = (typeof LunoDeployEngine !== 'undefined') ? LunoDeployEngine.GITHUB_ORG : 'Lunocracy';
-            window.open('https://' + org.toLowerCase() + '.github.io/' + remoteRepo + '/', '_blank');
+            var account = (typeof LunoDeployEngine !== 'undefined' && LunoDeployEngine.getGithubAccount) ? LunoDeployEngine.getGithubAccount() : 'karmatics';
+            window.open('https://' + account.toLowerCase() + '.github.io/' + remoteRepo + '/', '_blank');
           }
         };
 
@@ -231,17 +236,17 @@ class LunoSpaDock {
         toolbar.appendChild(btnRow);
         contentArea.appendChild(toolbar);
 
-        var rect = contentArea.getBoundingClientRect();
-        var toolbarHeight = 44;
-        var topPos = ((rect.top > 0 ? rect.top : 60) + toolbarHeight) + 'px';
-        var leftPos = (rect.left > 0 ? rect.left : 10) + 'px';
-        var widthPos = (rect.width > 0 ? rect.width : (window.innerWidth - 20)) + 'px';
-
-        persistentAppRoot.style.top = topPos;
-        persistentAppRoot.style.left = leftPos;
-        persistentAppRoot.style.width = widthPos;
-        persistentAppRoot.style.height = 'calc(82vh - ' + toolbarHeight + 'px)';
         persistentAppRoot.style.display = 'block';
+
+        if (!LunoSpaDock._hasResizeListener) {
+          LunoSpaDock._hasResizeListener = true;
+          window.addEventListener('resize', function() {
+            LunoSpaDock.syncAppPreviewLayout();
+          });
+        }
+
+        LunoSpaDock.syncAppPreviewLayout();
+        setTimeout(function() { LunoSpaDock.syncAppPreviewLayout(); }, 60);
 
         if (!LunoSpaDock._iframeCache[targetProj]) {
           await LunoSpaDock.reloadActivePreviewIframe(targetProj);
@@ -270,6 +275,24 @@ class LunoSpaDock {
       } else if (effectiveKey === 'test' && typeof LunoTestRunner !== 'undefined') {
         LunoTestRunner.mountUI(contentArea);
       }
+    }
+  static syncAppPreviewLayout() {
+      var contentArea = document.getElementById('luno-spa-content-area');
+      var persistentAppRoot = document.getElementById('luno-persistent-app-root');
+      var toolbar = document.getElementById('luno-app-preview-toolbar');
+      if (!contentArea || !persistentAppRoot || persistentAppRoot.style.display === 'none') return;
+
+      var rect = contentArea.getBoundingClientRect();
+      var toolbarHeight = toolbar ? toolbar.offsetHeight + 8 : 44;
+      var topPos = (rect.top > 0 ? rect.top : 52) + toolbarHeight;
+      var leftPos = Math.max(0, rect.left);
+      var widthPos = Math.max(200, rect.width || (window.innerWidth - leftPos - 12));
+      var heightPos = Math.max(150, window.innerHeight - topPos - 10);
+
+      persistentAppRoot.style.top = topPos + 'px';
+      persistentAppRoot.style.left = leftPos + 'px';
+      persistentAppRoot.style.width = widthPos + 'px';
+      persistentAppRoot.style.height = heightPos + 'px';
     }
 }
 

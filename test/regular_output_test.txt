@@ -1,2 +1,0 @@
-Hello Luno Main Output Card!
-Step-by-step diagnostics display inside the regular feedback card.

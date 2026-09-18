@@ -39,13 +39,15 @@ class ClientApp {
   }
 
   static getTargetProject() {
-    if (ClientApp.targetProjectName) return ClientApp.targetProjectName;
-    if (ClientApp.activeRootDir) {
-      return ClientApp.activeRootDir.split('/').filter(Boolean).pop() || 'Luno';
+      if (ClientApp.targetProjectName && ClientApp.targetProjectName !== 'Luno Workspace') {
+        return ClientApp.targetProjectName;
+      }
+      if (ClientApp.activeRootDir) {
+        var lastSegment = ClientApp.activeRootDir.split('/').filter(Boolean).pop();
+        if (lastSegment && lastSegment !== 'Luno Workspace') return lastSegment;
+      }
+      return 'Luno';
     }
-    return 'Luno';
-  }
-
   static async init() {
     console.log('[Luno] Workspace online.');
     try {

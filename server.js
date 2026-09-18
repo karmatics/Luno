@@ -8,20 +8,25 @@ process.on('uncaughtException', (err) => {
 
 const PORT = process.env.PORT || 8080;
 
-// Point strictly to __dirname (inner Luno) if luno.json exists, fallback to parent if necessary
-const defaultDir = fs.existsSync(path.join(__dirname, 'luno.json')) ? __dirname : path.resolve(__dirname, '..');
+const defaultDir = fs.existsSync(path.join(__dirname, 'Luno', 'luno.json'))
+  ? path.join(__dirname, 'Luno')
+  : (fs.existsSync(path.join(__dirname, 'luno.json')) ? __dirname : process.cwd());
+
 const RUNTIME_STATE = { rootDir: defaultDir };
 
 const server = http.createServer(async (req, res) => {
   try {
-    // Flush Luno module cache so disk updates take effect instantly
     Object.keys(require.cache).forEach(key => {
       if (key.includes('LunoServer.js') || key.includes('LunoClassPatcher.js')) {
         delete require.cache[key];
       }
     });
 
-    const LunoServer = require('./core/LunoServer.js');
+    const lunoServerModule = fs.existsSync(path.join(__dirname, 'core', 'LunoServer.js'))
+      ? './core/LunoServer.js'
+      : './Luno/core/LunoServer.js';
+
+    const LunoServer = require(lunoServerModule);
     LunoServer.setRootDir(RUNTIME_STATE.rootDir);
     await LunoServer.handle(req, res);
     RUNTIME_STATE.rootDir = LunoServer.getRootDir();
