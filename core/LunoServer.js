@@ -234,77 +234,87 @@ static getRootDir() {
   }
 
   static sanitizeAndResolvePath(relPath, baseDir) {
-    const webRoot = LunoServer.getWebRootDir();
-    if (!relPath || typeof relPath !== 'string' || !relPath.trim()) {
-      return baseDir || LunoServer.getRootDir();
-    }
+      const webRoot = LunoServer.getWebRootDir();
+      if (!relPath || typeof relPath !== 'string' || !relPath.trim()) {
+        return baseDir || LunoServer.getRootDir();
+      }
 
-    let normalized = relPath.replace(/\\/g, '/').replace(/^\/+/, '').trim();
-    if (normalized.startsWith('Luno Workspace/')) normalized = normalized.slice(15).trim();
-    if (normalized.startsWith('LunoProjects/')) normalized = normalized.slice(13).trim();
+      let normalized = relPath.replace(/\\/g, '/').replace(/^\/+/, '').trim();
+      if (normalized.startsWith('Luno Workspace/')) normalized = normalized.slice(15).trim();
+      if (normalized.startsWith('LunoProjects/')) normalized = normalized.slice(13).trim();
 
-    // Canonical Single Server Anchor: Always resolve server.js to Luno/server.js
-    if (normalized === 'server.js' || normalized === 'LunoProjects/server.js' || normalized === 'Luno/server.js') {
-      return path.join(webRoot, 'Luno', 'server.js');
-    }
+      // Canonical Single Server Anchor: Always resolve server.js to Luno/server.js
+      if (normalized === 'server.js' || normalized === 'LunoProjects/server.js' || normalized === 'Luno/server.js') {
+        return path.join(webRoot, 'Luno', 'server.js');
+      }
 
-    // Canonical Single Loader Anchor: Always resolve LunoLoader.js to Library/LunoLoader.js
-    if (normalized === 'LunoLoader.js' || normalized === 'app/LunoLoader.js' || normalized === 'Luno/app/LunoLoader.js' || normalized === 'Library/LunoLoader.js') {
-      return path.join(webRoot, 'Library', 'LunoLoader.js');
-    }
+      // Canonical Single Loader Anchor: Always resolve LunoLoader.js to Library/LunoLoader.js
+      if (normalized === 'LunoLoader.js' || normalized === 'app/LunoLoader.js' || normalized === 'Luno/app/LunoLoader.js' || normalized === 'Library/LunoLoader.js') {
+        return path.join(webRoot, 'Library', 'LunoLoader.js');
+      }
 
-    const targetDir = baseDir || LunoServer.getRootDir();
+      const targetDir = baseDir || LunoServer.getRootDir();
 
-    // 1. Direct resolution for core/app files
-    if (
-      normalized.startsWith('app/') ||
-      normalized.startsWith('core/') ||
-      normalized.startsWith('browser/') ||
-      normalized.startsWith('docs/') ||
-      normalized.startsWith('test/')
-    ) {
-      const lunoPath = path.join(LunoServer.getRootDir(), normalized);
-      if (fs.existsSync(lunoPath)) return lunoPath;
-      const webLunoPath = path.join(webRoot, 'Luno', normalized);
-      if (fs.existsSync(webLunoPath)) return webLunoPath;
-    }
+      // 1. Direct resolution for core/app files
+      if (
+        normalized.startsWith('app/') ||
+        normalized.startsWith('core/') ||
+        normalized.startsWith('browser/') ||
+        normalized.startsWith('docs/') ||
+        normalized.startsWith('test/')
+      ) {
+        const lunoPath = path.join(LunoServer.getRootDir(), normalized);
+        if (fs.existsSync(lunoPath)) return lunoPath;
+        const webLunoPath = path.join(webRoot, 'Luno', normalized);
+        if (fs.existsSync(webLunoPath)) return webLunoPath;
 
-    // 2. Direct resolution for offline node_modules assets
-    if (normalized.startsWith('node_modules/')) {
-      const lunoModules = path.join(LunoServer.getRootDir(), normalized);
-      if (fs.existsSync(lunoModules)) return lunoModules;
-      const webModules = path.join(webRoot, normalized);
-      if (fs.existsSync(webModules)) return webModules;
-    }
-
-    // 3. Central Library resolution
-    if (normalized.startsWith('Library/') || normalized.startsWith('library/')) {
-      const localCandidate = path.join(targetDir, normalized);
-      if (targetDir !== webRoot && path.basename(targetDir).toLowerCase() !== 'library') {
-        if (fs.existsSync(localCandidate)) {
-          return localCandidate;
+        // Resilient fallback across sibling directories if path folder was misplaced
+        const fileName = path.basename(normalized);
+        const searchFolders = ['app', 'core', 'browser', 'docs', 'test'];
+        for (const fld of searchFolders) {
+          const candidate = path.join(LunoServer.getRootDir(), fld, fileName);
+          if (fs.existsSync(candidate)) return candidate;
+          const webCandidate = path.join(webRoot, 'Luno', fld, fileName);
+          if (fs.existsSync(webCandidate)) return webCandidate;
         }
       }
-      return path.join(webRoot, 'Library', normalized.replace(/^(?:Library|library)\//, ''));
-    }
 
-    if (path.isAbsolute(normalized)) {
-      const resolvedAbs = path.resolve(normalized);
-      if (resolvedAbs.startsWith(webRoot)) {
-        return resolvedAbs;
+      // 2. Direct resolution for offline node_modules assets
+      if (normalized.startsWith('node_modules/')) {
+        const lunoModules = path.join(LunoServer.getRootDir(), normalized);
+        if (fs.existsSync(lunoModules)) return lunoModules;
+        const webModules = path.join(webRoot, normalized);
+        if (fs.existsSync(webModules)) return webModules;
       }
-      throw new Error('[LunoServer Guard] Path boundary violation: "' + normalized + '" is outside workspace root.');
-    }
 
-    const segments = normalized.split('/');
-    const firstSegment = segments[0];
-    const candidateDir = path.join(webRoot, firstSegment);
-    if (fs.existsSync(candidateDir) && fs.statSync(candidateDir).isDirectory()) {
-      return path.join(webRoot, normalized);
-    }
+      // 3. Central Library resolution
+      if (normalized.startsWith('Library/') || normalized.startsWith('library/')) {
+        const localCandidate = path.join(targetDir, normalized);
+        if (targetDir !== webRoot && path.basename(targetDir).toLowerCase() !== 'library') {
+          if (fs.existsSync(localCandidate)) {
+            return localCandidate;
+          }
+        }
+        return path.join(webRoot, 'Library', normalized.replace(/^(?:Library|library)\//, ''));
+      }
 
-    return path.resolve(targetDir, normalized);
-  }
+      if (path.isAbsolute(normalized)) {
+        const resolvedAbs = path.resolve(normalized);
+        if (resolvedAbs.startsWith(webRoot)) {
+          return resolvedAbs;
+        }
+        throw new Error('[LunoServer Guard] Path boundary violation: "' + normalized + '" is outside workspace root.');
+      }
+
+      const segments = normalized.split('/');
+      const firstSegment = segments[0];
+      const candidateDir = path.join(webRoot, firstSegment);
+      if (fs.existsSync(candidateDir) && fs.statSync(candidateDir).isDirectory()) {
+        return path.join(webRoot, normalized);
+      }
+
+      return path.resolve(targetDir, normalized);
+    }
   static async parseAndSaveFiles(bodyText, projectOverride) {
     let filesToWrite = [];
     let serverScript = "";

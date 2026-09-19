@@ -709,12 +709,22 @@ class LunoFileSystem {
   }
 
   static resolveStaticUrl(filePath, projectName) {
-    const clean = LunoFileSystem.normalizeRelativePath(filePath, projectName);
-    if (!clean.startsWith('./') && !clean.startsWith('../') && !clean.startsWith('http://') && !clean.startsWith('https://')) {
-      return './' + clean;
+      const clean = LunoFileSystem.normalizeRelativePath(filePath, projectName);
+      if (!clean.startsWith('./') && !clean.startsWith('../') && !clean.startsWith('http://') && !clean.startsWith('https://')) {
+        if (LunoFileSystem.isStaticHosting()) {
+          const isLib = clean.startsWith('Library/') || clean.startsWith('library/') || projectName === 'Library';
+          if (isLib) {
+            const cleanLib = clean.replace(/^(?:Library|library)\//, '');
+            const account = (typeof LunoDeployEngine !== 'undefined' && LunoDeployEngine.getGithubAccount)
+              ? LunoDeployEngine.getGithubAccount()
+              : 'karmatics';
+            return 'https://' + account.toLowerCase() + '.github.io/Library/' + cleanLib;
+          }
+        }
+        return './' + clean;
+      }
+      return clean;
     }
-    return clean;
-  }
 }
 
 globalThis.LunoIndexedDbAdapter = LunoIndexedDbAdapter;

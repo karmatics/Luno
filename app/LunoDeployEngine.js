@@ -8,23 +8,31 @@ class LunoDeployEngine {
     static DEFAULT_ACCOUNT = 'karmatics';
 
     static getGithubAccount() {
-      try {
-        if (typeof localStorage !== 'undefined') {
-          return localStorage.getItem(LunoDeployEngine.GITHUB_ACCOUNT_KEY) || LunoDeployEngine.DEFAULT_ACCOUNT;
+          try {
+            if (typeof localStorage !== 'undefined') {
+              var saved = localStorage.getItem(LunoDeployEngine.GITHUB_ACCOUNT_KEY || 'luno_github_account');
+              if (saved) return saved;
+            }
+            if (typeof window !== 'undefined' && window.location && window.location.hostname) {
+              var host = window.location.hostname.toLowerCase();
+              if (host.endsWith('.github.io')) {
+                var user = host.split('.')[0];
+                if (user && user !== 'localhost') return user;
+              }
+            }
+          } catch(e) {}
+          return LunoDeployEngine.DEFAULT_ACCOUNT || 'karmatics';
         }
-      } catch(e) {}
-      return LunoDeployEngine.DEFAULT_ACCOUNT;
-    }
 
     static setGithubAccount(account) {
-      try {
-        if (typeof localStorage !== 'undefined') {
-          var clean = (account || '').trim();
-          localStorage.setItem(LunoDeployEngine.GITHUB_ACCOUNT_KEY, clean || LunoDeployEngine.DEFAULT_ACCOUNT);
+          try {
+            if (typeof localStorage !== 'undefined') {
+              var clean = (account || '').trim();
+              var key = LunoDeployEngine.GITHUB_ACCOUNT_KEY || 'luno_github_account';
+              localStorage.setItem(key, clean || LunoDeployEngine.DEFAULT_ACCOUNT || 'karmatics');
+            }
+          } catch(e) {}
         }
-      } catch(e) {}
-    }
-
     static get GITHUB_ORG() {
       return LunoDeployEngine.getGithubAccount();
     };
@@ -176,56 +184,76 @@ class LunoDeployEngine {
     }
 
   static async ensureGitHubPagesParity(projectName) {
-      var pName = projectName || (typeof ClientApp !== 'undefined' && ClientApp.getTargetProject ? ClientApp.getTargetProject() : 'Luno');
+        var pName = projectName || (typeof ClientApp !== 'undefined' && ClientApp.getTargetProject ? ClientApp.getTargetProject() : 'Luno');
 
-      try {
-        var serverScript = [
-          'const fs = require("fs");',
-          'const path = require("path");',
-          'const projRoot = LunoServer.resolveProjectBaseDir("' + pName + '");',
-          'const webRoot = LunoServer.getWebRootDir();',
-          'const libraryRoot = path.join(webRoot, "Library");',
-          'let actions = [];',
-          '',
-          '// 1. Ensure .nojekyll exists in project root',
-          'const noJekyllPath = path.join(projRoot, ".nojekyll");',
-          'if (!fs.existsSync(noJekyllPath)) {',
-          '  fs.writeFileSync(noJekyllPath, "", "utf8");',
-          '  actions.push("Created .nojekyll in " + path.basename(projRoot));',
-          '}',
-          '',
-          '// 2. Special handling for Library as a standalone repository',
-          'if (pName === "Library" || path.basename(projRoot).toLowerCase() === "library") {',
-          '  const indexPath = path.join(projRoot, "index.html");',
-          '  if (!fs.existsSync(indexPath)) {',
-          '    const files = fs.readdirSync(projRoot).filter(f => f.endsWith(".js") || f.endsWith(".css"));',
-          '    const listHtml = files.map(f => `<li><a href="${f}">${f}</a></li>`).join("\\n    ");',
-          '    const catalogHtml = `<!DOCTYPE html>\\n<html>\\n<head>\\n  <meta charset="UTF-8">\\n  <title>Luno Shared Library</title>\\n  <style>body { background:#0d1117; color:#c9d1d9; font-family:monospace; padding:2rem; } a { color:#58a6ff; text-decoration:none; } a:hover { text-decoration:underline; } h2 { color:#00f2fe; }</style>\\n</head>\\n<body>\\n  <h2>📚 Luno Shared Library Hub</h2>\\n  <p style="color:#8b949e;">Central repository of shared utilities, loaders, and UI components for Karmatics applications.</p>\\n  <ul>\\n    ${listHtml}\\n  </ul>\\n</body>\\n</html>`;',
-          '    fs.writeFileSync(indexPath, catalogHtml, "utf8");',
-          '    actions.push("Generated index.html catalog for Library repository");',
-          '  }',
-          '  return actions.length > 0 ? actions.join("\\n") : "Library repository assets verified cleanly.";',
-          '}',
-          '',
-          '// 3. For sibling apps: ensure .nojekyll and verify index.html',
-          'const indexPath = path.join(projRoot, "index.html");',
-          'if (fs.existsSync(indexPath)) {',
-          '  actions.push("Verified index.html in [" + pName + "]");',
-          '}',
-          '',
-          'return actions.length > 0 ? actions.join("\\n") : "GitHub Pages assets verified cleanly.";'
-        ].join('\n');
+        try {
+          var serverScript = [
+            'const fs = require("fs");',
+            'const path = require("path");',
+            'const projRoot = LunoServer.resolveProjectBaseDir("' + pName + '");',
+            'const webRoot = LunoServer.getWebRootDir();',
+            'const libraryRoot = path.join(webRoot, "Library");',
+            'let actions = [];',
+            '',
+            '// 1. Ensure .nojekyll exists in project root',
+            'const noJekyllPath = path.join(projRoot, ".nojekyll");',
+            'if (!fs.existsSync(noJekyllPath)) {',
+            '  fs.writeFileSync(noJekyllPath, "", "utf8");',
+            '  actions.push("Created .nojekyll in " + path.basename(projRoot));',
+            '}',
+            '',
+            '// 2. Special handling for Library as a standalone repository',
+            'if (pName === "Library" || path.basename(projRoot).toLowerCase() === "library") {',
+            '  const indexPath = path.join(projRoot, "index.html");',
+            '  if (!fs.existsSync(indexPath)) {',
+            '    const files = fs.readdirSync(projRoot).filter(f => f.endsWith(".js") || f.endsWith(".css"));',
+            '    const listHtml = files.map(f => `<li><a href="${f}">${f}</a></li>`).join("\\n    ");',
+            '    const catalogHtml = `<!DOCTYPE html>\\n<html>\\n<head>\\n  <meta charset="UTF-8">\\n  <title>Luno Shared Library</title>\\n  <style>body { background:#0d1117; color:#c9d1d9; font-family:monospace; padding:2rem; } a { color:#58a6ff; text-decoration:none; } a:hover { text-decoration:underline; } h2 { color:#00f2fe; }</style>\\n</head>\\n<body>\\n  <h2>📚 Luno Shared Library Hub</h2>\\n  <p style="color:#8b949e;">Central repository of shared utilities, loaders, and UI components for Karmatics applications.</p>\\n  <ul>\\n    ${listHtml}\\n  </ul>\\n</body>\\n</html>`;',
+            '    fs.writeFileSync(indexPath, catalogHtml, "utf8");',
+            '    actions.push("Generated index.html catalog for Library repository");',
+            '  }',
+            '  return actions.length > 0 ? actions.join("\\n") : "Library repository assets verified cleanly.";',
+            '}',
+            '',
+            '// 3. Purge redundant nested Library directories from sibling app directory',
+            'if (pName !== "Library" && path.basename(projRoot).toLowerCase() !== "library") {',
+            '  const nestedLibPath = path.join(projRoot, "Library");',
+            '  const nestedLibLower = path.join(projRoot, "library");',
+            '  if (fs.existsSync(nestedLibPath)) {',
+            '    fs.rmSync(nestedLibPath, { recursive: true, force: true });',
+            '    actions.push("Deleted redundant nested Library/ directory in [" + pName + "]");',
+            '  }',
+            '  if (fs.existsSync(nestedLibLower)) {',
+            '    fs.rmSync(nestedLibLower, { recursive: true, force: true });',
+            '    actions.push("Deleted redundant nested library/ directory in [" + pName + "]");',
+            '  }',
+            '',
+            '  // 4. Update index.html with resilient fork-to-karmatics Library loader fallback',
+            '  const indexPath = path.join(projRoot, "index.html");',
+            '  if (fs.existsSync(indexPath)) {',
+            '    let indexHtml = fs.readFileSync(indexPath, "utf8");',
+            '    const resilientLoaderTag = \'<script src="/Library/LunoLoader.js" onerror="this.onerror=null; (function(el){ var u=(window.location.hostname.endsWith(\\\'.github.io\\\')?window.location.hostname.split(\\\'.\\\')[0]:\\\'karmatics\\\'); el.src=\\\'https://\\\'+u+\\\'.github.io/Library/LunoLoader.js\\\'; el.onerror=function(){ el.onerror=null; el.src=\\\'https://karmatics.github.io/Library/LunoLoader.js\\\'; }; })(this);"><\\/script>\';',
+            '    if (!indexHtml.includes("karmatics.github.io/Library/LunoLoader.js")) {',
+            '      indexHtml = indexHtml.replace(/<script[^>]*src=["\'][^"\']*LunoLoader\\.js["\'][^>]*>\\s*<\\/script>/i, resilientLoaderTag);',
+            '      fs.writeFileSync(indexPath, indexHtml, "utf8");',
+            '      actions.push("Updated index.html in [" + pName + "] with resilient fork-aware Library loader fallback");',
+            '    }',
+            '  }',
+            '}',
+            '',
+            'return actions.length > 0 ? actions.join("\\n") : "GitHub Pages assets verified cleanly.";'
+          ].join('\n');
 
-        var res = await fetch('/api/save?project=' + encodeURIComponent(pName), {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ files: [], serverScript: serverScript, project: pName })
-        });
-        return await res.json();
-      } catch (e) {
-        return { success: false, error: e.message };
+          var res = await fetch('/api/save?project=' + encodeURIComponent(pName), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ files: [], serverScript: serverScript, project: pName })
+          });
+          return await res.json();
+        } catch (e) {
+          return { success: false, error: e.message };
+        }
       }
-    }
   static async checkProjectGitStatus(projectName) {
     var pName = projectName || (typeof ClientApp !== 'undefined' && ClientApp.getTargetProject ? ClientApp.getTargetProject() : 'Luno');
 

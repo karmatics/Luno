@@ -81,38 +81,48 @@ class LunoApiClient {
   }
 
   static async fetchFsRead(filePath = '', project = '') {
-    const cleanFile = LunoApiClient.cleanPath(filePath);
-    if (LunoApiClient.isStaticMode()) {
-      const adapter = LunoFileSystem.getAdapter();
-      if (adapter && adapter.read) {
-        const r = await adapter.read(cleanFile, project);
-        if (r.success) return r;
-      }
-      try {
-        const fetchUrl = (typeof LunoFileSystem !== 'undefined' && LunoFileSystem.resolveStaticUrl)
-          ? LunoFileSystem.resolveStaticUrl(cleanFile, project)
-          : ('./' + cleanFile);
-
-        const res = await fetch(fetchUrl);
-        if (res.ok) {
-          const content = await res.text();
-          const trimmed = content.trim();
-          const isHtmlFile = cleanFile.toLowerCase().endsWith('.html') || cleanFile.toLowerCase().endsWith('.htm');
-          if (!isHtmlFile && (trimmed.startsWith('<!DOCTYPE') || trimmed.startsWith('<html'))) {
-            return { success: false, error: 'File not found: ' + cleanFile };
-          }
-          if (adapter && adapter.write) {
-            await adapter.write(cleanFile, content, project);
-          }
-          return { success: true, content, size: content.length };
+      const cleanFile = LunoApiClient.cleanPath(filePath);
+      if (LunoApiClient.isStaticMode()) {
+        const adapter = LunoFileSystem.getAdapter();
+        if (adapter && adapter.read) {
+          const r = await adapter.read(cleanFile, project);
+          if (r.success) return r;
         }
-      } catch(fetchErr) {}
-      return { success: false, error: 'File not found in storage: ' + cleanFile };
-    }
-    const pParam = project ? ('&project=' + encodeURIComponent(project)) : '';
-    return await LunoApiClient.safeJsonFetch('/api/fs/read?path=' + encodeURIComponent(cleanFile) + pParam);
-  }
+        try {
+          const fetchUrl = (typeof LunoFileSystem !== 'undefined' && LunoFileSystem.resolveStaticUrl)
+            ? LunoFileSystem.resolveStaticUrl(cleanFile, project)
+            : ('./' + cleanFile);
 
+          let res = await fetch(fetchUrl);
+          const isLib = cleanFile.startsWith('Library/') || cleanFile.startsWith('library/') || project === 'Library';
+
+          // Resilient fallback for library files on GitHub Pages
+          if (!res.ok && isLib) {
+            const cleanLib = cleanFile.replace(/^(?:Library|library)\//, '');
+            const fallbackUrl = 'https://karmatics.github.io/Library/' + cleanLib;
+            if (fetchUrl !== fallbackUrl) {
+              res = await fetch(fallbackUrl);
+            }
+          }
+
+          if (res.ok) {
+            const content = await res.text();
+            const trimmed = content.trim();
+            const isHtmlFile = cleanFile.toLowerCase().endsWith('.html') || cleanFile.toLowerCase().endsWith('.htm');
+            if (!isHtmlFile && (trimmed.startsWith('<!DOCTYPE') || trimmed.startsWith('<html'))) {
+              return { success: false, error: 'File not found: ' + cleanFile };
+            }
+            if (adapter && adapter.write) {
+              await adapter.write(cleanFile, content, project);
+            }
+            return { success: true, content, size: content.length };
+          }
+        } catch(fetchErr) {}
+        return { success: false, error: 'File not found in storage: ' + cleanFile };
+      }
+      const pParam = project ? ('&project=' + encodeURIComponent(project)) : '';
+      return await LunoApiClient.safeJsonFetch('/api/fs/read?path=' + encodeURIComponent(cleanFile) + pParam);
+    }
   static async fetchAllCode(project = '', options = {}) {
     const proj = project || (typeof ClientApp !== 'undefined' && ClientApp.getTargetProject ? ClientApp.getTargetProject() : 'Luno');
     const opts = (typeof options === 'boolean') ? { includeAllLibrary: options } : (options || {});

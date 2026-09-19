@@ -449,58 +449,59 @@ class LunoProjectTemplates {
   }
 
   static async createFromTemplate(templateId, parentDir) {
-      const tpl = LunoProjectTemplates.TEMPLATES.find(t => t.id === templateId);
-      if (!tpl) return;
+        const tpl = LunoProjectTemplates.TEMPLATES.find(t => t.id === templateId);
+        if (!tpl) return;
 
-      const rawName = prompt('Enter new project name (letters, numbers, underscores):', 'my_new_app');
-      if (!rawName) return;
+        const rawName = prompt('Enter new project name (letters, numbers, underscores):', 'my_new_app');
+        if (!rawName) return;
 
-      const cleanName = rawName.trim().replace(/[^a-zA-Z0-9_\-]/g, '');
-      if (!cleanName) {
-        alert('Invalid project name. Please use alphanumeric characters, dashes, or underscores.');
-        return;
-      }
-
-      let filesList = [];
-      for (const [relFile, content] of Object.entries(tpl.files)) {
-        let fileContent = content;
-        // Upgrade index.html in new templates to include resilient loader fallback
-        if (relFile === 'index.html') {
-          fileContent = fileContent.replace(
-            '<script src="/Library/LunoLoader.js"><\\/script>',
-            '<script src="/Library/LunoLoader.js" onerror="this.onerror=null; this.src=\'https://karmatics.github.io/Library/LunoLoader.js\';"><\\/script>'
-          );
+        const cleanName = rawName.trim().replace(/[^a-zA-Z0-9_\-]/g, '');
+        if (!cleanName) {
+          alert('Invalid project name. Please use alphanumeric characters, dashes, or underscores.');
+          return;
         }
+
+        var resilientLoaderTag = '<script src="/Library/LunoLoader.js" onerror="this.onerror=null; (function(el){ var u=(window.location.hostname.endsWith(\'.github.io\')?window.location.hostname.split(\'.\')[0]:\'karmatics\'); el.src=\'https://\'+u+\'.github.io/Library/LunoLoader.js\'; el.onerror=function(){ el.onerror=null; el.src=\'https://karmatics.github.io/Library/LunoLoader.js\'; }; })(this);"><\/script>';
+
+        let filesList = [];
+        for (const [relFile, content] of Object.entries(tpl.files)) {
+          let fileContent = content;
+          if (relFile === 'index.html') {
+            fileContent = fileContent.replace(
+              /<script[^>]*src=["'][^"']*LunoLoader\.js["'][^>]*>\s*<\/script>/i,
+              resilientLoaderTag
+            );
+          }
+          filesList.push({
+            filePath: cleanName + '/' + relFile,
+            content: fileContent,
+            action: 'direct'
+          });
+        }
+
         filesList.push({
-          filePath: cleanName + '/' + relFile,
-          content: fileContent,
+          filePath: cleanName + '/.nojekyll',
+          content: '',
           action: 'direct'
         });
+
+        try {
+          if (typeof ClientApp !== 'undefined' && ClientApp.setTargetProject) {
+            ClientApp.setTargetProject(cleanName, { openTab: true });
+          }
+
+          await LunoApiClient.savePayload({ files: filesList, serverScript: '', project: cleanName }, cleanName);
+
+          if (typeof LunoSpaDock !== 'undefined') {
+            LunoSpaDock.mountView('app_' + cleanName);
+          }
+          if (typeof ClientApp !== 'undefined' && ClientApp.showToast) {
+            ClientApp.showToast('Created project [' + cleanName + '] from template!', 'success', '🌱');
+          }
+        } catch (e) {
+          alert('Error creating project: ' + e.message);
+        }
       }
-
-      filesList.push({
-        filePath: cleanName + '/.nojekyll',
-        content: '',
-        action: 'direct'
-      });
-
-      try {
-        if (typeof ClientApp !== 'undefined' && ClientApp.setTargetProject) {
-          ClientApp.setTargetProject(cleanName, { openTab: true });
-        }
-
-        await LunoApiClient.savePayload({ files: filesList, serverScript: '', project: cleanName }, cleanName);
-
-        if (typeof LunoSpaDock !== 'undefined') {
-          LunoSpaDock.mountView('app_' + cleanName);
-        }
-        if (typeof ClientApp !== 'undefined' && ClientApp.showToast) {
-          ClientApp.showToast('Created project [' + cleanName + '] from template!', 'success', '🌱');
-        }
-      } catch (e) {
-        alert('Error creating project: ' + e.message);
-      }
-    }
   static async forkProject(sourceProjectName, container) {
     if (!sourceProjectName) return;
 

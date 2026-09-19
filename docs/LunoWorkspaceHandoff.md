@@ -14,6 +14,9 @@ Current Server Port: http://localhost:8080
   Library hub, and the Luno workspace server.
 • Luno Core Root: /Users/rob/source/LunoProjects/Luno
   The meta-development environment and live editor.
+• Shared Library Root: /Users/rob/source/LunoProjects/Library
+  The standalone shared dependency repository housing DomBasics.js,
+  ThreeJSLoader.js, UITools.js, Audio/Synth tools, and LunoLoader.js.
 • Legacy Recursi Archive: /Users/rob/source/recursi/web
   Archive containing 50+ legacy applications awaiting modernization.
 
@@ -119,4 +122,34 @@ PHASE 3: MIGRATING CREATIVE & MEDIA TOOLS FROM RECURSI/WEB
 • AardvarkPlaylist & aardvarkBookmarklet:
   - Advanced YouTube playlist manager and falling-note "Guitar Hero for piano" visualizer.
   - Links with 850 MIDI piano rolls in `recursi/web/pianorolls/`.
+
+--------------------------------------------------------------------------------
+5. MULTI-REPO GITHUB PAGES & FORK-AWARE LIBRARY RESOLUTION
+--------------------------------------------------------------------------------
+A. ZERO-COPY / NO NESTED LIBRARIES:
+   - Sibling applications must NEVER duplicate or vendor files into a local `Library/`
+     directory.
+   - `LunoDeployEngine.ensureGitHubPagesParity()` actively deletes any nested `Library/`
+     or `library/` folders discovered inside app directories.
+   - Keeping `Library/` out of app repositories keeps each sibling app's Git repository
+     under 50KB.
+
+B. THREE-TIER RESOLUTION CHAIN:
+   When an app loads, `LunoLoader.js` and `LunoApiClient` resolve shared library
+   dependencies (`DomBasics.js`, `ThreeJSLoader.js`, etc.) using this deterministic fallback:
+
+   1. Local Development Server:
+      - App requests `/Library/...`
+      - `LunoServer` routes directly to the local sibling `/Library` folder.
+
+   2. User Fork on GitHub Pages (e.g. `https://<user>.github.io/<app>/`):
+      - App looks for `https://<user>.github.io/Library/...`.
+      - If `<user>` has forked `Library` and enabled GitHub Pages on their fork,
+        their customized library modules take effect.
+
+   3. Karmatics Root Fallback:
+      - If `<user>` has NOT forked or deployed `Library` (HTTP 404 or network error),
+        the loader automatically redirects the request to `https://karmatics.github.io/Library/...`.
+      - Result: Anyone can fork any sibling app, hit 1-Tap Deploy in Luno, and the app
+        immediately works live on GitHub Pages without requiring them to fork the Library.
 ================================================================================
