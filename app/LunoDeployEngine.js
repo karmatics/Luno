@@ -54,34 +54,38 @@ class LunoDeployEngine {
   }
 
   static getRepoMappings() {
-        var defaults = {
-          'Luno': 'Luno',
-          'LunoTests': 'LunoTests',
-          'SvgStudio': 'SvgStudio',
-          'Es6Converter': 'Es6Converter',
-          'BookmarkletWorkshop': 'BookmarkletWorkshop',
-          'AardvarkPlaylist': 'AardvarkPlaylist',
-          'aardvarkBookmarklet': 'aardvarkBookmarklet',
-          'Basic3D': 'Basic3D',
-          'VideoEditor': 'VideoEditor',
-          'guessTheNoteGame': 'guessTheNoteGame',
-          'VideoPrepper': 'VideoPrepper',
-          'BasicsWithDialogBox': 'BasicsWithDialogBox',
-          'SimpleTest': 'SimpleTest',
-          'MathStorm': 'MathStorm',
-          'Library': 'Library',
-          'images': 'images',
-          'MySituation': 'situation'
-        };
+    var defaults = {
+      'Luno': 'Luno',
+      'LunoTests': 'LunoTests',
+      'SvgStudio': 'SvgStudio',
+      'Es6Converter': 'Es6Converter',
+      'BookmarkletWorkshop': 'BookmarkletWorkshop',
+      'AardvarkPlaylist': 'AardvarkPlaylist',
+      'aardvarkBookmarklet': 'aardvarkBookmarklet',
+      'Basic3D': 'Basic3D',
+      'VideoEditor': 'VideoEditor',
+      'guessTheNoteGame': 'guessTheNoteGame',
+      'VideoPrepper': 'VideoPrepper',
+      'BasicsWithDialogBox': 'BasicsWithDialogBox',
+      'SimpleTest': 'SimpleTest',
+      'MathStorm': 'MathStorm',
+      'AlphabetGame': 'AlphabetGame',
+      'RobotDividend': 'RobotDividend',
+      'Calculator': 'Calculator',
+      'LegoDetective': 'LegoDetective',
+      'Library': 'Library',
+      'images': 'images',
+      'MySituation': 'situation'
+    };
 
-        try {
-          if (typeof localStorage !== 'undefined') {
-            var raw = localStorage.getItem(LunoDeployEngine.REPO_MAP_KEY);
-            if (raw) return Object.assign(defaults, JSON.parse(raw));
-          }
-        } catch(e) {}
-        return defaults;
+    try {
+      if (typeof localStorage !== 'undefined') {
+        var raw = localStorage.getItem(LunoDeployEngine.REPO_MAP_KEY);
+        if (raw) return Object.assign(defaults, JSON.parse(raw));
       }
+    } catch(e) {}
+    return defaults;
+  }
   static setRepoMapping(projectName, remoteRepoName) {
     if (!projectName) return;
     var mappings = LunoDeployEngine.getRepoMappings();

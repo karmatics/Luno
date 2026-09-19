@@ -63,7 +63,7 @@ class LunoIndexedDbAdapter {
           [].concat(meta.styles || []).forEach(p => discovered.add(p));
           [].concat(meta.docs || []).forEach(p => discovered.add(p));
           [].concat(meta.files || []).forEach(p => discovered.add(p));
-          [].concat(meta.library || []).forEach(p => discovered.add('library/' + p.replace(/^(?:Library|library)\//, '')));
+          [].concat(meta.library || []).forEach(p => discovered.add('Library/' + p.replace(/^(?:Library|library)\//, '')));
 
           if (meta.entrypoint && meta.entrypoint.file) discovered.add(meta.entrypoint.file);
 
@@ -87,7 +87,6 @@ class LunoIndexedDbAdapter {
 
     return null;
   }
-
   static normalizeKey(filePath, projectName) {
     const proj = projectName || (typeof ClientApp !== 'undefined' && ClientApp.getTargetProject ? ClientApp.getTargetProject() : 'Luno');
     let clean = (filePath || '').replace(/\\/g, '/').replace(/^\/+/, '').trim();

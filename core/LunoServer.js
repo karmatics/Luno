@@ -468,99 +468,118 @@ static getRootDir() {
   }
 
   static handleDeploy(req, res, url) {
-      let body = '';
-      req.on('data', chunk => { body += chunk; });
-      req.on('end', () => {
+    let body = '';
+    req.on('data', chunk => { body += chunk; });
+    req.on('end', () => {
+      try {
+        let commitMsg = 'Automated deployment from Luno Workspace';
+        let targetProj = (url && url.searchParams && url.searchParams.get('project')) || '';
+        let deployToPages = true;
+
         try {
-          let commitMsg = 'Automated deployment from Luno Workspace';
-          let targetProj = (url && url.searchParams && url.searchParams.get('project')) || '';
-          let deployToPages = true;
+          const parsed = JSON.parse(body || '{}');
+          if (parsed.commitMsg) commitMsg = parsed.commitMsg;
+          if (parsed.project) targetProj = parsed.project;
+          if (parsed.deployToPages !== undefined) deployToPages = Boolean(parsed.deployToPages);
+        } catch(e) {}
 
+        const targetDir = LunoServer.resolveProjectBaseDir(targetProj);
+        let output = '';
+
+        if (!fs.existsSync(targetDir)) {
+          return LunoServer.sendJSON(res, 404, { success: false, error: 'Project directory not found: ' + targetDir });
+        }
+
+        if (!fs.existsSync(path.join(targetDir, '.git'))) {
           try {
-            const parsed = JSON.parse(body || '{}');
-            if (parsed.commitMsg) commitMsg = parsed.commitMsg;
-            if (parsed.project) targetProj = parsed.project;
-            if (parsed.deployToPages !== undefined) deployToPages = Boolean(parsed.deployToPages);
+            execSync('git init -b main', { cwd: targetDir, encoding: 'utf8' });
           } catch(e) {}
+        }
 
-          const targetDir = LunoServer.resolveProjectBaseDir(targetProj);
-          let output = '';
+        const lockFile = path.join(targetDir, '.git', 'index.lock');
+        if (fs.existsSync(lockFile)) {
+          try { fs.unlinkSync(lockFile); } catch(e){}
+        }
 
-          if (!fs.existsSync(targetDir)) {
-            return LunoServer.sendJSON(res, 404, { success: false, error: 'Project directory not found: ' + targetDir });
+        const envOpts = {
+          cwd: targetDir,
+          encoding: 'utf8',
+          env: Object.assign({}, process.env, {
+            GIT_SSH_COMMAND: 'ssh -o StrictHostKeyChecking=accept-new'
+          })
+        };
+
+        try {
+          output += '$ git add -A\n';
+          try {
+            execSync('git add -A', envOpts);
+            const stagedStatus = execSync('git status --short', envOpts);
+            if (stagedStatus && stagedStatus.trim()) {
+              output += stagedStatus.trim() + '\n';
+            }
+          } catch(addErr) {
+            output += (addErr.stdout || '') + (addErr.stderr || '') + '\n';
           }
 
-          if (!fs.existsSync(path.join(targetDir, '.git'))) {
+          const safeCommitMsg = commitMsg.replace(/"/g, '\\"');
+          output += '\n$ git commit -m "' + safeCommitMsg + '" --allow-empty\n';
+          try {
+            const commitRes = execSync('git commit -m "' + safeCommitMsg + '" --allow-empty 2>&1', envOpts) || '';
+            output += commitRes.trim() + '\n';
+          } catch(commitErr) {
+            output += ((commitErr.stdout || '') + (commitErr.stderr || '')).trim() + '\n';
+          }
+
+          // Reset uncommitted modification counters in luno.json
+          const lunoJsonPath = path.join(targetDir, 'luno.json');
+          if (fs.existsSync(lunoJsonPath)) {
             try {
-              execSync('git init -b main', { cwd: targetDir, encoding: 'utf8' });
+              const meta = JSON.parse(fs.readFileSync(lunoJsonPath, 'utf8'));
+              meta.processedCountSinceCheckpoint = 0;
+              meta.lastCheckpointTime = new Date().toISOString();
+              meta.pendingCheckpointDescription = 'Clean working tree';
+              fs.writeFileSync(lunoJsonPath, JSON.stringify(meta, null, 2), 'utf8');
             } catch(e) {}
           }
 
-          const lockFile = path.join(targetDir, '.git', 'index.lock');
-          if (fs.existsSync(lockFile)) {
-            try { fs.unlinkSync(lockFile); } catch(e){}
-          }
-
-          const envOpts = {
-            cwd: targetDir,
-            encoding: 'utf8',
-            env: Object.assign({}, process.env, {
-              GIT_SSH_COMMAND: 'ssh -o StrictHostKeyChecking=accept-new'
-            })
-          };
-
-          try {
-            output += '$ git add -A\n';
-            output += (execSync('git add -A', envOpts) || '');
-
-            const safeCommitMsg = commitMsg.replace(/"/g, '\\"');
-            output += '\n$ git commit -m "' + safeCommitMsg + '" --allow-empty\n';
+          // Only push to remote origin when deploying to GitHub Pages
+          if (deployToPages) {
+            output += '\n$ git push origin main\n';
             try {
-              output += (execSync('git commit -m "' + safeCommitMsg + '" --allow-empty', envOpts) || '');
-            } catch(commitErr) {
-              output += (commitErr.stdout || '') + '\n';
+              const pushOut = execSync('git push origin main 2>&1', envOpts) || '';
+              output += (pushOut.trim() || 'Everything up-to-date') + '\n';
+            } catch(pushErr) {
+              const errDetail = (pushErr.stdout || '') + (pushErr.stderr || pushErr.message || '');
+              output += errDetail.trim() + '\n';
             }
-
-            // Reset uncommitted modification counters in luno.json
-            const lunoJsonPath = path.join(targetDir, 'luno.json');
-            if (fs.existsSync(lunoJsonPath)) {
-              try {
-                const meta = JSON.parse(fs.readFileSync(lunoJsonPath, 'utf8'));
-                meta.processedCountSinceCheckpoint = 0;
-                meta.lastCheckpointTime = new Date().toISOString();
-                meta.pendingCheckpointDescription = 'Clean working tree';
-                fs.writeFileSync(lunoJsonPath, JSON.stringify(meta, null, 2), 'utf8');
-              } catch(e) {}
-            }
-
-            // Only push to remote origin when deploying to GitHub Pages
-            if (deployToPages) {
-              output += '\n$ git push origin main\n';
-              try {
-                output += (execSync('git push origin main', envOpts) || '');
-              } catch(pushErr) {
-                output += (pushErr.stdout || '') + '\n' + (pushErr.stderr || pushErr.message);
-              }
-            }
-
-            return LunoServer.sendJSON(res, 200, {
-              success: true,
-              project: path.basename(targetDir),
-              deployToPages: deployToPages,
-              output: output.trim()
-            });
-          } catch (gitErr) {
-            const errDetail = (gitErr.stdout || '') + '\n' + (gitErr.stderr || gitErr.message);
-            return LunoServer.sendJSON(res, 500, {
-              success: false,
-              error: errDetail.trim()
-            });
           }
-        } catch (err) {
-          return LunoServer.sendJSON(res, 400, { success: false, error: err.message });
+
+          // Include commit verification log with stats
+          try {
+            const statOut = execSync('git log -1 --stat --oneline 2>&1', envOpts);
+            if (statOut && statOut.trim()) {
+              output += '\n$ git log -1 --stat --oneline\n' + statOut.trim() + '\n';
+            }
+          } catch(e) {}
+
+          return LunoServer.sendJSON(res, 200, {
+            success: true,
+            project: path.basename(targetDir),
+            deployToPages: deployToPages,
+            output: output.trim()
+          });
+        } catch (gitErr) {
+          const errDetail = (gitErr.stdout || '') + '\n' + (gitErr.stderr || gitErr.message);
+          return LunoServer.sendJSON(res, 500, {
+            success: false,
+            error: errDetail.trim()
+          });
         }
-      });
-    }
+      } catch (err) {
+        return LunoServer.sendJSON(res, 400, { success: false, error: err.message });
+      }
+    });
+  }
   static async handleAllCode(req, res, url) {
       try {
         const targetProj = (url && url.searchParams && url.searchParams.get('project')) || 'Luno';

@@ -50,8 +50,12 @@
     "Luno/docs/LunoDocs.js",
     "Luno/app/LunoDeployEngine.js"
   ],
-  "processedCountSinceCheckpoint": 0,
-  "lastCheckpointTime": "2026-09-18T05:13:48.957Z",
-  "pendingCheckpointDescription": "Clean working tree - canonical main paths verified",
-  "changedMethods": {}
+  "processedCountSinceCheckpoint": 3,
+  "lastCheckpointTime": "2026-09-19T05:25:52.853Z",
+  "pendingCheckpointDescription": "Clean working tree",
+  "changedMethods": {
+    "app/LunoFileSystem.js": "2026-09-19T05:32:41.236Z",
+    "app/LunoDeployEngine.js": "2026-09-19T05:32:41.236Z",
+    "core/LunoServer.js": "2026-09-19T05:38:49.195Z"
+  }
 }
