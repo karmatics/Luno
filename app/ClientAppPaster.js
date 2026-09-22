@@ -18,34 +18,47 @@ class ClientAppPaster {
   }
 
   static async processPastedText(text) {
-    if (!text || !text.trim()) return;
+      if (!text || !text.trim()) return;
 
-    if (typeof LunoSpaDock !== 'undefined' && LunoSpaDock.mountView) {
-      LunoSpaDock.mountView('workspace');
-    }
-
-    if (typeof ClientAppUI !== 'undefined') {
-      ClientAppUI.inboxExpanded = true;
-      var inboxContent = document.getElementById('inbox-card-content');
-      if (inboxContent) inboxContent.style.display = 'block';
-    }
-
-    var inboxCard = document.querySelector('.inbox-card');
-    if (inboxCard && typeof LunoAnimationEngine !== 'undefined') {
-      var rect = inboxCard.getBoundingClientRect();
-      LunoAnimationEngine.burstSparks(rect.left + (rect.width / 2), rect.top + (rect.height / 2), '#3fb950', 16);
-      LunoAnimationEngine.pulseTarget(inboxCard, { color: '#3fb950', glowColor: 'rgba(63, 185, 80, 0.8)' });
-      if (typeof LunoAnimationEngine.wavePulse === 'function') {
-        LunoAnimationEngine.wavePulse(inboxCard, '#3fb950');
+      if (typeof LunoSpaDock !== 'undefined' && LunoSpaDock.mountView) {
+        LunoSpaDock.mountView('workspace');
       }
-    }
 
-    var input = document.getElementById('code-input') || document.getElementById('payload-input');
-    if (input) input.value = text;
+      if (typeof ClientAppUI !== 'undefined') {
+        ClientAppUI.inboxExpanded = true;
+        var inboxContent = document.getElementById('inbox-card-content');
+        if (inboxContent) inboxContent.style.display = 'block';
+      }
 
-    ClientAppPaster.executeSave(text);
+      var inboxCard = document.querySelector('.inbox-card');
+      if (inboxCard && typeof LunoAnimationEngine !== 'undefined') {
+        var rect = inboxCard.getBoundingClientRect();
+        LunoAnimationEngine.burstSparks(rect.left + (rect.width / 2), rect.top + (rect.height / 2), '#3fb950', 16);
+        LunoAnimationEngine.pulseTarget(inboxCard, { color: '#3fb950', glowColor: 'rgba(63, 185, 80, 0.8)' });
+        if (typeof LunoAnimationEngine.wavePulse === 'function') {
+          LunoAnimationEngine.wavePulse(inboxCard, '#3fb950');
+        }
+      }
+
+      var input = document.getElementById('code-input') || document.getElementById('payload-input');
+      if (input) input.value = text;
+
+      // Render live micro-approval metric badge immediately upon paste
+      if (typeof MicroApprovalBadge !== 'undefined' && MicroApprovalBadge.renderInlineBadge) {
+        MicroApprovalBadge.renderInlineBadge(text, 'inbox-metrics-badge');
+      }
+
+      var autoApprove = (typeof ClientApp !== 'undefined' && ClientApp.autoApprove);
+      var pace = (typeof ClientApp !== 'undefined' && ClientApp.executionPace);
+
+      if (!autoApprove && pace !== 'fast' && typeof InboxActionTimer !== 'undefined' && InboxActionTimer.startTimer) {
+        InboxActionTimer.startTimer(text, function() {
+          ClientAppPaster.executeSave(text);
+        });
+      } else {
+        ClientAppPaster.executeSave(text);
+      }
   }
-
   static async saveCode() {
     var input = document.getElementById('code-input') || document.getElementById('payload-input');
     var text = input ? input.value : '';

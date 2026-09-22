@@ -155,33 +155,34 @@ class LunoMetricsAnalyzer {
   }
 
   static async runAnalysis(cardElement, projectOverride) {
-    const contentArea = cardElement.querySelector('#metrics-content-area');
-    if (!contentArea) return;
+      const contentArea = cardElement.querySelector('#metrics-content-area');
+      if (!contentArea) return;
 
-    const targetProj = projectOverride || (typeof ClientApp !== 'undefined' && ClientApp.getTargetProject ? ClientApp.getTargetProject() : 'Luno');
+      const targetProj = projectOverride || (typeof ClientApp !== 'undefined' && ClientApp.getTargetProject ? ClientApp.getTargetProject() : 'Luno');
+      const m = LunoMetricsAnalyzer.makeElement;
 
-    const m = LunoMetricsAnalyzer.makeElement;
-    contentArea.innerHTML = '';
-    contentArea.appendChild(m('div', { style: { padding: '1rem', color: '#00f2fe', textAlign: 'center' } }, '⚡ Scanning codebase files for [' + targetProj + ']...'));
+      contentArea.innerHTML = '';
+      contentArea.appendChild(m('div', { style: { padding: '1rem', color: '#00f2fe', textAlign: 'center' } }, '⚡ Scanning codebase files for [' + targetProj + ']...'));
 
-    try {
-      const pParam = targetProj ? ('?project=' + encodeURIComponent(targetProj)) : '';
-      const res = await fetch('/api/all-code' + pParam);
-      const data = await res.json();
-      if (!res.ok) throw new Error('Failed to fetch codebase from server');
+      try {
+        const data = await LunoApiClient.fetchAllCode(targetProj, { includeProjectLibrary: false });
+        if (!data || !data.success || !data.filesMap) {
+          throw new Error((data && data.error) || 'Failed to fetch codebase files from storage');
+        }
 
-      let metricsList = [];
-      if (data.filesMap) {
-        metricsList = Object.keys(data.filesMap).map(filePath => LunoMetricsAnalyzer.analyzeFile(filePath, data.filesMap[filePath]));
+        let metricsList = [];
+        if (data.filesMap) {
+          metricsList = Object.keys(data.filesMap).map(filePath => {
+            return LunoMetricsAnalyzer.analyzeFile(filePath, data.filesMap[filePath]);
+          });
+        }
+
+        const totals = LunoMetricsAnalyzer.calculateTotals(metricsList);
+        LunoMetricsAnalyzer.renderAnalysisResults(contentArea, metricsList, totals, targetProj);
+      } catch (err) {
+        contentArea.innerHTML = `<div style="padding:0.75rem; color:#ff7b72; background:#3c1418; border-radius:6px;">❌ Metrics Analysis Error: ${err.message}</div>`;
       }
-
-      const totals = LunoMetricsAnalyzer.calculateTotals(metricsList);
-      LunoMetricsAnalyzer.renderAnalysisResults(contentArea, metricsList, totals, targetProj);
-    } catch (err) {
-      contentArea.innerHTML = `<div style="padding:0.75rem; color:#ff7b72; background:#3c1418; border-radius:6px;">❌ Metrics Analysis Error: ${err.message}</div>`;
-    }
   }
-
   static renderAnalysisResults(container, metricsList, totals, projectName) {
     container.innerHTML = '';
     const m = LunoMetricsAnalyzer.makeElement;

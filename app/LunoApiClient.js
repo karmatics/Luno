@@ -36,32 +36,67 @@ class LunoApiClient {
   }
 
   static async ping() {
-    if (LunoApiClient.isStaticMode()) {
-      return { status: 'online', mode: 'indexedDb-static', rootDir: 'Project Root', version: 'v3.6.7' };
-    }
-    try {
-      return await LunoApiClient.safeJsonFetch('/api/ping');
-    } catch(e) {
-      return { status: 'offline', mode: 'indexedDb-static', rootDir: 'Project Root', version: 'v3.6.7' };
-    }
-  }
-
-  static async fetchProjectsList() {
-    if (LunoApiClient.isStaticMode()) {
-      const adapter = LunoFileSystem.getAdapter();
-      if (adapter && adapter.listProjects) {
-        return await adapter.listProjects();
+      if (LunoApiClient.isStaticMode()) {
+        return { status: 'online', mode: 'indexedDb-static', rootDir: 'Project Root', version: 'v3.8.0' };
       }
-    }
-    try {
-      return await LunoApiClient.safeJsonFetch('/api/projects/list');
-    } catch(e) {
-      const adapter = (typeof LunoFileSystem !== 'undefined') ? LunoFileSystem.getAdapter() : null;
-      if (adapter && adapter.listProjects) return await adapter.listProjects();
-      return { success: true, projects: [{ name: 'Luno' }, { name: 'Library' }] };
-    }
+      try {
+        return await LunoApiClient.safeJsonFetch('/api/ping');
+      } catch(e) {
+        return { status: 'offline', mode: 'indexedDb-static', rootDir: 'Project Root', version: 'v3.8.0' };
+      }
   }
+  static async fetchProjectsList() {
+      if (LunoApiClient.isStaticMode()) {
+        const adapter = LunoFileSystem.getAdapter();
+        let idbProjects = [];
+        if (adapter && adapter.listProjects) {
+          try {
+            const res = await adapter.listProjects();
+            idbProjects = (res && res.projects) || [];
+          } catch(e) {}
+        }
 
+        // Catalog of known Karmatics sibling applications deployed on GitHub Pages
+        const catalog = [
+          { name: 'Basic3D', version: '1.0.0', description: 'Three.js 3D viewport starter' },
+          { name: 'BasicsWithDialogBox', version: '1.0.0', description: 'Windowing and resizable dialogs' },
+          { name: 'TriBlob', version: '1.0.0', description: '3D simulation with glossy HDR reflections' },
+          { name: 'teacup', version: '1.0.0', description: 'Utah teacup 3D rendering' },
+          { name: 'LegoDetective', version: '1.0.0', description: '3D LEGO brick rendering and detective game' },
+          { name: 'AlphabetGame', version: '1.0.0', description: 'Children letter matching and drawing game' },
+          { name: 'MathStorm', version: '1.0.0', description: 'Fast-paced arithmetic game' },
+          { name: 'guessTheNoteGame', version: '1.0.0', description: 'Ear training and piano keyboard game' },
+          { name: 'Calculator', version: '1.0.0', description: 'Modular arithmetic and fractions calculator' },
+          { name: 'accuCad', version: '1.0.0', description: 'Computer-aided drafting constraint system' },
+          { name: 'situation', version: '1.0.0', description: 'Executive career dossier and valuation portfolio' },
+          { name: 'AardvarkPlaylist', version: '1.0.0', description: 'YouTube playlist manager and falling-note visualizer' },
+          { name: 'SvgStudio', version: '1.0.0', description: 'Visual vector design tool' },
+          { name: 'Es6Converter', version: '1.0.0', description: 'ES6 class migration workbench' },
+          { name: 'LunoTests', version: '1.0.0', description: 'Automated test suite' },
+          { name: 'BookmarkletWorkshop', version: '1.0.0', description: 'Google AI Studio bookmarklet generator' },
+          { name: 'Luno', version: '3.8.0', description: 'Luno Workspace core' },
+          { name: 'Library', isLibrary: true, version: '1.0.0', description: 'Central shared dependencies hub' }
+        ];
+
+        const mergedMap = new Map();
+        catalog.forEach(p => mergedMap.set(p.name, p));
+        idbProjects.forEach(p => {
+          if (!mergedMap.has(p.name)) {
+            mergedMap.set(p.name, Object.assign({ version: '1.0.0', description: 'Custom browser project' }, p));
+          }
+        });
+
+        return { success: true, projects: Array.from(mergedMap.values()) };
+      }
+
+      try {
+        return await LunoApiClient.safeJsonFetch('/api/projects/list');
+      } catch(e) {
+        const adapter = (typeof LunoFileSystem !== 'undefined') ? LunoFileSystem.getAdapter() : null;
+        if (adapter && adapter.listProjects) return await adapter.listProjects();
+        return { success: true, projects: [{ name: 'Luno' }, { name: 'Library' }] };
+      }
+  }
   static async fetchFsListRecursive(targetPath = '', project = '') {
     const cleanTarget = LunoApiClient.cleanPath(targetPath);
     if (LunoApiClient.isStaticMode()) {
@@ -214,7 +249,7 @@ class LunoApiClient {
 
       var targetProj = project || (payloadObj && payloadObj.project) || '';
 
-      // Strip redundant projectName/ prefix so server path.join never creates duplicate nested folders
+      // Strip redundant projectName/ prefix so path resolutions remain clean
       if (payloadObj && Array.isArray(payloadObj.files)) {
         payloadObj.files.forEach(f => {
           if (f.filePath) {
@@ -229,29 +264,54 @@ class LunoApiClient {
       if (LunoApiClient.isStaticMode()) {
         const adapter = LunoFileSystem.getAdapter();
         let modified = 0;
-        if (adapter && adapter.write && Array.isArray(payloadObj.files)) {
-          for (const file of payloadObj.files) {
-            if (file.filePath && file.content !== undefined) {
-              await adapter.write(file.filePath, file.content, targetProj);
-              modified++;
+        if (adapter && Array.isArray(payloadObj.files)) {
+          if (typeof adapter.writeBatch === 'function') {
+            const res = await adapter.writeBatch(payloadObj.files, targetProj);
+            modified = res.count || 0;
+          } else if (adapter.write) {
+            for (const file of payloadObj.files) {
+              if (file.filePath && file.content !== undefined) {
+                await adapter.write(file.filePath, file.content, targetProj);
+                modified++;
+              }
             }
+          }
+
+          // Mirror server metadata updates in IndexedDB
+          if (modified > 0 && targetProj) {
+            try {
+              var metaRes = await adapter.read('luno.json', targetProj);
+              var meta = {};
+              if (metaRes && metaRes.success && metaRes.content) {
+                meta = JSON.parse(metaRes.content);
+              }
+              meta.processedCountSinceCheckpoint = (meta.processedCountSinceCheckpoint || 0) + modified;
+              meta.changedMethods = meta.changedMethods || {};
+              var nowIso = new Date().toISOString();
+              payloadObj.files.forEach(f => {
+                if (f.filePath && !f.filePath.endsWith('.bak')) {
+                  meta.changedMethods[f.filePath] = nowIso;
+                }
+              });
+              await adapter.write('luno.json', JSON.stringify(meta, null, 2) + '\n', targetProj);
+            } catch(mErr) {}
           }
         }
         return {
           success: true,
           count: modified,
           modifiedCount: modified,
-          llmFeedback: '✅ Saved ' + modified + ' file(s) successfully.'
+          llmFeedback: '✅ Saved ' + modified + ' file(s) cleanly to browser IndexedDB storage.'
         };
       }
 
       const pParam = targetProj ? ('?project=' + encodeURIComponent(targetProj)) : '';
       return await LunoApiClient.safeJsonFetch('/api/save' + pParam, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'X-Luno-Client': '1' },
         body: JSON.stringify(payloadObj)
       });
-    }
+  }
   static async forkProject(sourceProject, newProject) {
     if (LunoApiClient.isStaticMode()) {
       const adapter = LunoFileSystem.getAdapter();

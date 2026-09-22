@@ -16,31 +16,38 @@ class LunoIndexedDbAdapter {
   }
 
   static async getDb() {
-    if (LunoIndexedDbAdapter.db) return LunoIndexedDbAdapter.db;
-    return new Promise((resolve, reject) => {
-      if (typeof window === 'undefined' || !window.indexedDB) {
-        return reject(new Error('IndexedDB is not available in this environment.'));
-      }
-      const req = indexedDB.open(LunoIndexedDbAdapter.DB_NAME, 2);
-      req.onupgradeneeded = (e) => {
-        const db = e.target.result;
-        if (!db.objectStoreNames.contains(LunoIndexedDbAdapter.STORE_FILES)) {
-          const fileStore = db.createObjectStore(LunoIndexedDbAdapter.STORE_FILES, { keyPath: 'id' });
-          fileStore.createIndex('project', 'project', { unique: false });
-          fileStore.createIndex('path', 'path', { unique: false });
-        }
-        if (!db.objectStoreNames.contains(LunoIndexedDbAdapter.STORE_PROJECTS)) {
-          db.createObjectStore(LunoIndexedDbAdapter.STORE_PROJECTS, { keyPath: 'name' });
-        }
-      };
-      req.onsuccess = (e) => {
-        LunoIndexedDbAdapter.db = e.target.result;
-        resolve(LunoIndexedDbAdapter.db);
-      };
-      req.onerror = (e) => reject(e.target.error);
-    });
-  }
+      if (LunoIndexedDbAdapter.db) return LunoIndexedDbAdapter.db;
 
+      // Request persistent storage so browsers (Safari/Chrome) do not evict IndexedDB
+      try {
+        if (typeof navigator !== 'undefined' && navigator.storage && navigator.storage.persist) {
+          navigator.storage.persist();
+        }
+      } catch(e) {}
+
+      return new Promise((resolve, reject) => {
+        if (typeof window === 'undefined' || !window.indexedDB) {
+          return reject(new Error('IndexedDB is not available in this environment.'));
+        }
+        const req = indexedDB.open(LunoIndexedDbAdapter.DB_NAME, 2);
+        req.onupgradeneeded = (e) => {
+          const db = e.target.result;
+          if (!db.objectStoreNames.contains(LunoIndexedDbAdapter.STORE_FILES)) {
+            const fileStore = db.createObjectStore(LunoIndexedDbAdapter.STORE_FILES, { keyPath: 'id' });
+            fileStore.createIndex('project', 'project', { unique: false });
+            fileStore.createIndex('path', 'path', { unique: false });
+          }
+          if (!db.objectStoreNames.contains(LunoIndexedDbAdapter.STORE_PROJECTS)) {
+            db.createObjectStore(LunoIndexedDbAdapter.STORE_PROJECTS, { keyPath: 'name' });
+          }
+        };
+        req.onsuccess = (e) => {
+          LunoIndexedDbAdapter.db = e.target.result;
+          resolve(LunoIndexedDbAdapter.db);
+        };
+        req.onerror = (e) => reject(e.target.error);
+      });
+  }
   static async loadProjectManifest(projectName) {
     const proj = projectName || (typeof ClientApp !== 'undefined' && ClientApp.getTargetProject ? ClientApp.getTargetProject() : 'Luno');
     if (LunoIndexedDbAdapter.manifestCache.has(proj)) {
@@ -87,18 +94,24 @@ class LunoIndexedDbAdapter {
 
     return null;
   }
+
   static normalizeKey(filePath, projectName) {
-    const proj = projectName || (typeof ClientApp !== 'undefined' && ClientApp.getTargetProject ? ClientApp.getTargetProject() : 'Luno');
-    let clean = (filePath || '').replace(/\\/g, '/').replace(/^\/+/, '').trim();
-    if (clean.startsWith('Luno Workspace/')) clean = clean.slice(15).trim();
-    if (clean.startsWith('./')) clean = clean.slice(2).trim();
+      let clean = (filePath || '').replace(/\\/g, '/').replace(/^\/+/, '').trim();
+      if (clean.startsWith('Luno Workspace/')) clean = clean.slice(15).trim();
+      if (clean.startsWith('./')) clean = clean.slice(2).trim();
 
-    if (clean.startsWith(proj + '/')) {
-      clean = clean.slice(proj.length + 1);
-    }
-    return { id: proj + '::' + clean, project: proj, path: clean };
+      let proj = projectName || (typeof ClientApp !== 'undefined' && ClientApp.getTargetProject ? ClientApp.getTargetProject() : 'Luno');
+
+      // Shared library files are always anchored exclusively to project 'Library'
+      if (clean.startsWith('Library/') || clean.startsWith('library/')) {
+        proj = 'Library';
+        clean = clean.replace(/^(?:Library|library)\//, '');
+      } else if (clean.startsWith(proj + '/')) {
+        clean = clean.slice(proj.length + 1);
+      }
+
+      return { id: proj + '::' + clean, project: proj, path: clean };
   }
-
   static async read(filePath, projectName) {
     const db = await LunoIndexedDbAdapter.getDb();
     const key = LunoIndexedDbAdapter.normalizeKey(filePath, projectName);
@@ -219,134 +232,237 @@ class LunoIndexedDbAdapter {
   }
 
   static async fork(sourceProject, newProject) {
-    const db = await LunoIndexedDbAdapter.getDb();
-    const filesRes = await LunoIndexedDbAdapter.list('', sourceProject);
-    const sourceFiles = filesRes.items || [];
-
-    const tx = db.transaction([LunoIndexedDbAdapter.STORE_FILES, LunoIndexedDbAdapter.STORE_PROJECTS], 'readwrite');
-    const fileStore = tx.objectStore(LunoIndexedDbAdapter.STORE_FILES);
-    const projStore = tx.objectStore(LunoIndexedDbAdapter.STORE_PROJECTS);
-
-    const newIdentifier = LunoIndexedDbAdapter.toPascalCase(newProject);
-    let oldIdentifier = LunoIndexedDbAdapter.toPascalCase(sourceProject);
-
-    const sourceMetaRaw = await new Promise(res => {
-      fileStore.get(sourceProject + '::luno.json').onsuccess = (e) => res(e.target.result ? e.target.result.content : '');
-    });
-
-    let sourceMeta = {};
-    if (sourceMetaRaw) {
-      try {
-        sourceMeta = JSON.parse(sourceMetaRaw);
-        if (sourceMeta.entrypoint && sourceMeta.entrypoint.class) {
-          oldIdentifier = sourceMeta.entrypoint.class;
-        } else if (sourceMeta.mainClass) {
-          oldIdentifier = sourceMeta.mainClass;
-        }
-      } catch (e) {}
-    }
-
-    const renamedFilesMap = {};
-    let copiedCount = 0;
-
-    for (const f of sourceFiles) {
-      const oldKey = sourceProject + '::' + f.relativePath;
-      const fileData = await new Promise(res => {
-        fileStore.get(oldKey).onsuccess = (e) => res(e.target.result);
-      });
-
-      if (!fileData) continue;
-
-      let targetRelPath = f.relativePath;
-      const pathParts = targetRelPath.split('/');
-      const fileName = pathParts[pathParts.length - 1];
-      const nameParts = fileName.split('.');
-      const baseName = nameParts[0];
-      const ext = nameParts.slice(1).join('.');
-
-      if (baseName === oldIdentifier && ext) {
-        pathParts[pathParts.length - 1] = newIdentifier + '.' + ext;
-        targetRelPath = pathParts.join('/');
-        renamedFilesMap[f.relativePath] = targetRelPath;
-      }
-
-      const newKey = newProject + '::' + targetRelPath;
-      let newContent = fileData.content || '';
-
-      const isTextFile = /\.(js|mjs|json|html|htm|css|md|txt|svg)$/i.test(targetRelPath);
-      if (isTextFile && typeof newContent === 'string') {
-        if (oldIdentifier && newIdentifier && oldIdentifier !== newIdentifier) {
-          const classWordRegex = new RegExp('\\b' + oldIdentifier + '\\b', 'g');
-          newContent = newContent.replace(classWordRegex, newIdentifier);
-        }
-        const oldPrefixRegex = new RegExp('\\b' + sourceProject + '/', 'g');
-        newContent = newContent.replace(oldPrefixRegex, newProject + '/');
-      }
-
-      if (targetRelPath === 'luno.json') {
+      // Ensure all source files are loaded from static hosting if not already cached in IndexedDB
+      if (typeof LunoApiClient !== 'undefined' && LunoApiClient.fetchAllCode) {
         try {
-          const meta = JSON.parse(newContent);
-          meta.name = newProject;
-          meta.description = meta.description
-            ? (meta.description + ' (Forked from ' + sourceProject + ')')
-            : ('Forked application from ' + sourceProject);
-          meta.processedCountSinceCheckpoint = 0;
-          meta.lastCheckpointTime = new Date().toISOString();
-          meta.pendingCheckpointDescription = 'Clean fork initialized from ' + sourceProject;
-
-          if (meta.entrypoint && typeof meta.entrypoint === 'object') {
-            meta.entrypoint.class = newIdentifier;
-            if (meta.entrypoint.file) {
-              for (const [oldP, newP] of Object.entries(renamedFilesMap)) {
-                if (meta.entrypoint.file.endsWith(oldP)) {
-                  meta.entrypoint.file = meta.entrypoint.file.replace(new RegExp(oldP + '$'), newP);
-                }
-              }
+          const sourceBundle = await LunoApiClient.fetchAllCode(sourceProject, { includeProjectLibrary: false });
+          if (sourceBundle && sourceBundle.filesMap) {
+            const toCache = [];
+            for (const [rPath, content] of Object.entries(sourceBundle.filesMap)) {
+              toCache.push({ filePath: rPath, content: content });
+            }
+            if (toCache.length > 0) {
+              await LunoIndexedDbAdapter.writeBatch(toCache, sourceProject);
             }
           }
-          if (meta.mainClass) {
-            meta.mainClass = newIdentifier;
-          }
+        } catch (e) {
+          console.warn('[LunoIndexedDbAdapter] Pre-fork caching note:', e.message);
+        }
+      }
 
-          if (Array.isArray(meta.main)) {
-            meta.main = meta.main.map(p => {
-              let updated = p;
-              for (const [oldP, newP] of Object.entries(renamedFilesMap)) {
-                if (updated.endsWith(oldP)) updated = updated.replace(new RegExp(oldP + '$'), newP);
-              }
-              return updated;
-            });
-          }
+      const db = await LunoIndexedDbAdapter.getDb();
+      const filesRes = await LunoIndexedDbAdapter.list('', sourceProject);
+      const sourceFiles = filesRes.items || [];
 
-          newContent = JSON.stringify(meta, null, 2) + '\n';
+      const tx = db.transaction([LunoIndexedDbAdapter.STORE_FILES, LunoIndexedDbAdapter.STORE_PROJECTS], 'readwrite');
+      const fileStore = tx.objectStore(LunoIndexedDbAdapter.STORE_FILES);
+      const projStore = tx.objectStore(LunoIndexedDbAdapter.STORE_PROJECTS);
+
+      const newIdentifier = LunoIndexedDbAdapter.toPascalCase(newProject);
+      let oldIdentifier = LunoIndexedDbAdapter.toPascalCase(sourceProject);
+
+      const sourceMetaRaw = await new Promise(res => {
+        fileStore.get(sourceProject + '::luno.json').onsuccess = (e) => res(e.target.result ? e.target.result.content : '');
+      });
+
+      let sourceMeta = {};
+      if (sourceMetaRaw) {
+        try {
+          sourceMeta = JSON.parse(sourceMetaRaw);
+          if (sourceMeta.entrypoint && sourceMeta.entrypoint.class) {
+            oldIdentifier = sourceMeta.entrypoint.class;
+          } else if (sourceMeta.mainClass) {
+            oldIdentifier = sourceMeta.mainClass;
+          }
         } catch (e) {}
       }
 
-      fileStore.put({
-        id: newKey,
-        project: newProject,
-        path: targetRelPath,
-        content: newContent,
-        size: newContent.length,
+      const renamedFilesMap = {};
+      let copiedCount = 0;
+
+      for (const f of sourceFiles) {
+        const oldKey = sourceProject + '::' + f.relativePath;
+        const fileData = await new Promise(res => {
+          fileStore.get(oldKey).onsuccess = (e) => res(e.target.result);
+        });
+
+        if (!fileData) continue;
+
+        let targetRelPath = f.relativePath;
+        const pathParts = targetRelPath.split('/');
+        const fileName = pathParts[pathParts.length - 1];
+        const nameParts = fileName.split('.');
+        const baseName = nameParts[0];
+        const ext = nameParts.slice(1).join('.');
+
+        if (baseName === oldIdentifier && ext) {
+          pathParts[pathParts.length - 1] = newIdentifier + '.' + ext;
+          targetRelPath = pathParts.join('/');
+          renamedFilesMap[f.relativePath] = targetRelPath;
+        }
+
+        const newKey = newProject + '::' + targetRelPath;
+        let newContent = fileData.content || '';
+
+        const isTextFile = /\.(js|mjs|json|html|htm|css|md|txt|svg)$/i.test(targetRelPath);
+        if (isTextFile && typeof newContent === 'string') {
+          if (oldIdentifier && newIdentifier && oldIdentifier !== newIdentifier) {
+            const classWordRegex = new RegExp('\\b' + oldIdentifier + '\\b', 'g');
+            newContent = newContent.replace(classWordRegex, newIdentifier);
+          }
+          const oldPrefixRegex = new RegExp('\\b' + sourceProject + '/', 'g');
+          newContent = newContent.replace(oldPrefixRegex, newProject + '/');
+        }
+
+        if (targetRelPath === 'luno.json') {
+          try {
+            const meta = JSON.parse(newContent);
+            meta.name = newProject;
+            meta.description = meta.description
+              ? (meta.description + ' (Forked from ' + sourceProject + ')')
+              : ('Forked application from ' + sourceProject);
+            meta.processedCountSinceCheckpoint = 0;
+            meta.lastCheckpointTime = new Date().toISOString();
+            meta.pendingCheckpointDescription = 'Clean fork initialized from ' + sourceProject;
+
+            if (meta.entrypoint && typeof meta.entrypoint === 'object') {
+              meta.entrypoint.class = newIdentifier;
+              if (meta.entrypoint.file) {
+                for (const [oldP, newP] of Object.entries(renamedFilesMap)) {
+                  if (meta.entrypoint.file.endsWith(oldP)) {
+                    meta.entrypoint.file = meta.entrypoint.file.replace(new RegExp(oldP + '$'), newP);
+                  }
+                }
+              }
+            }
+            if (meta.mainClass) {
+              meta.mainClass = newIdentifier;
+            }
+
+            if (Array.isArray(meta.main)) {
+              meta.main = meta.main.map(p => {
+                let updated = p;
+                for (const [oldP, newP] of Object.entries(renamedFilesMap)) {
+                  if (updated.endsWith(oldP)) updated = updated.replace(new RegExp(oldP + '$'), newP);
+                }
+                return updated;
+              });
+            }
+
+            newContent = JSON.stringify(meta, null, 2) + '\n';
+          } catch (e) {}
+        }
+
+        fileStore.put({
+          id: newKey,
+          project: newProject,
+          path: targetRelPath,
+          content: newContent,
+          size: newContent.length,
+          updatedAt: Date.now()
+        });
+        copiedCount++;
+      }
+
+      projStore.put({
+        name: newProject,
         updatedAt: Date.now()
       });
-      copiedCount++;
-    }
 
-    projStore.put({
-      name: newProject,
-      updatedAt: Date.now()
-    });
+      return {
+        success: true,
+        project: newProject,
+        sourceProject: sourceProject,
+        entrypointClass: newIdentifier,
+        oldEntrypointClass: oldIdentifier,
+        renamedFilesCount: Object.keys(renamedFilesMap).length,
+        copiedFilesCount: copiedCount
+      };
+  }
+  static async writeBatch(filesList, projectName) {
+      if (!Array.isArray(filesList) || filesList.length === 0) {
+        return { success: true, count: 0 };
+      }
 
-    return {
-      success: true,
-      project: newProject,
-      sourceProject: sourceProject,
-      entrypointClass: newIdentifier,
-      oldEntrypointClass: oldIdentifier,
-      renamedFilesCount: Object.keys(renamedFilesMap).length,
-      copiedFilesCount: copiedCount
-    };
+      const db = await LunoIndexedDbAdapter.getDb();
+      const defaultProj = projectName || (typeof ClientApp !== 'undefined' && ClientApp.getTargetProject ? ClientApp.getTargetProject() : 'Luno');
+
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction([LunoIndexedDbAdapter.STORE_FILES, LunoIndexedDbAdapter.STORE_PROJECTS], 'readwrite');
+        const fileStore = tx.objectStore(LunoIndexedDbAdapter.STORE_FILES);
+        const projStore = tx.objectStore(LunoIndexedDbAdapter.STORE_PROJECTS);
+        const touchedProjects = new Set();
+        let writtenCount = 0;
+
+        for (const file of filesList) {
+          if (!file || !file.filePath || file.content === undefined) continue;
+          const key = LunoIndexedDbAdapter.normalizeKey(file.filePath, defaultProj);
+
+          fileStore.put({
+            id: key.id,
+            project: key.project,
+            path: key.path,
+            content: file.content !== undefined ? file.content : '',
+            size: file.content ? file.content.length : 0,
+            updatedAt: Date.now()
+          });
+
+          touchedProjects.add(key.project);
+          writtenCount++;
+        }
+
+        touchedProjects.forEach(projName => {
+          projStore.put({
+            name: projName,
+            updatedAt: Date.now()
+          });
+        });
+
+        tx.oncomplete = () => resolve({ success: true, count: writtenCount });
+        tx.onerror = (e) => reject(new Error('IndexedDB batch write failed: ' + e.target.error));
+      });
+  }
+
+  static async deleteProject(projectName) {
+      if (!projectName || projectName === 'Luno' || projectName.toLowerCase() === 'library') {
+        throw new Error('Cannot delete core system or shared library in storage.');
+      }
+
+      const db = await LunoIndexedDbAdapter.getDb();
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction([LunoIndexedDbAdapter.STORE_FILES, LunoIndexedDbAdapter.STORE_PROJECTS], 'readwrite');
+        const fileStore = tx.objectStore(LunoIndexedDbAdapter.STORE_FILES);
+        const projStore = tx.objectStore(LunoIndexedDbAdapter.STORE_PROJECTS);
+        const index = fileStore.index('project');
+        const req = index.getAllKeys(projectName);
+
+        req.onsuccess = () => {
+          const keys = req.result || [];
+          keys.forEach(k => fileStore.delete(k));
+          projStore.delete(projectName);
+        };
+
+        tx.oncomplete = () => resolve({ success: true, project: projectName });
+        tx.onerror = (e) => reject(new Error('Failed to delete project from IndexedDB: ' + e.target.error));
+      });
+  }
+
+  static async resetProjectToDeployed(projectName) {
+      var pName = projectName || (typeof ClientApp !== 'undefined' && ClientApp.getTargetProject ? ClientApp.getTargetProject() : 'Luno');
+      if (!pName) return { success: false, error: 'Missing projectName' };
+
+      try {
+        await LunoIndexedDbAdapter.deleteProject(pName);
+        LunoIndexedDbAdapter.manifestCache.delete(pName);
+
+        if (typeof LunoApiClient !== 'undefined' && LunoApiClient.fetchAllCode) {
+          await LunoApiClient.fetchAllCode(pName, { includeProjectLibrary: true });
+        }
+
+        return { success: true, project: pName };
+      } catch (err) {
+        return { success: false, error: err.message };
+      }
   }
 }
 

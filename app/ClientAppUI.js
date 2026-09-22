@@ -565,68 +565,68 @@ class ClientAppUI {
   }
 
   static renderOutboxFirstLayout(container) {
-    if (!container) return;
-    var m = typeof LunoUIComponents !== 'undefined' ? LunoUIComponents.makeElement : null;
+      if (!container) return;
+      var m = typeof LunoUIComponents !== 'undefined' ? LunoUIComponents.makeElement : null;
 
-    container.innerHTML = '';
-    container.style.width = '100%';
-    container.style.maxWidth = '100%';
-    var verText = (typeof LunoVersion !== 'undefined') ? LunoVersion.getBadgeText() : 'v3.7.7';
+      container.innerHTML = '';
+      container.style.width = '100%';
+      container.style.maxWidth = '100%';
+      var verText = (typeof LunoVersion !== 'undefined') ? LunoVersion.getBadgeText() : 'v3.8.0';
 
-    // Full-width responsive container filling the available browser width
-    var mainBox = m('div', {
-      style: {
-        fontFamily: 'monospace',
-        padding: '0.75rem 1.25rem',
-        maxWidth: '100%',
-        width: '100%',
-        margin: '0',
-        minHeight: '100vh',
-        display: 'flex',
-        flexDirection: 'column',
-        gap: '0.75rem',
-        boxSizing: 'border-box'
-      }
-    });
+      // Full-width responsive container filling the available browser width
+      var mainBox = m('div', {
+        style: {
+          fontFamily: 'monospace',
+          padding: '0.75rem 1.25rem',
+          maxWidth: '100%',
+          width: '100%',
+          margin: '0',
+          minHeight: '100vh',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '0.75rem',
+          boxSizing: 'border-box'
+        }
+      });
 
-    var header = (typeof LunoSpaDock !== 'undefined' && LunoSpaDock.renderHeaderNav) ? LunoSpaDock.renderHeaderNav('workspace') : m('header', {}, 'Luno Home');
-    var telemetryDrawer = m('div', { id: 'luno-telemetry-drawer-container' });
+      var header = (typeof LunoSpaDock !== 'undefined' && LunoSpaDock.renderHeaderNav) ? LunoSpaDock.renderHeaderNav('workspace') : m('header', {}, 'Luno Home');
+      var telemetryDrawer = m('div', { id: 'luno-telemetry-drawer-container' });
 
-    // Full-width Responsive Dual-Column Row for Outbox and Inbox
-    var dualHeroRow = m('div', {
-      id: 'luno-hero-dual-row',
-      style: {
-        display: 'flex',
-        flexWrap: 'wrap',
-        gap: '0.85rem',
-        width: '100%',
-        alignItems: 'flex-start'
-      }
-    },
-      m('div', { style: { flex: '1 1 440px', minWidth: '280px', display: 'flex', flexDirection: 'column' } }, ClientAppUI.renderOutboxCard(m)),
-      m('div', { style: { flex: '1 1 440px', minWidth: '280px', display: 'flex', flexDirection: 'column' } }, ClientAppUI.renderInboxCard(m))
-    );
+      // Full-width Responsive Dual-Column Row for Outbox and Inbox
+      var dualHeroRow = m('div', {
+        id: 'luno-hero-dual-row',
+        style: {
+          display: 'flex',
+          flexWrap: 'wrap',
+          gap: '0.85rem',
+          width: '100%',
+          alignItems: 'flex-start'
+        }
+      },
+        m('div', { style: { flex: '1 1 440px', minWidth: '280px', display: 'flex', flexDirection: 'column' } }, ClientAppUI.renderOutboxCard(m)),
+        m('div', { style: { flex: '1 1 440px', minWidth: '280px', display: 'flex', flexDirection: 'column' } }, ClientAppUI.renderInboxCard(m))
+      );
 
-    mainBox.appendChild(header);
-    mainBox.appendChild(ClientAppUI.renderStarterPanel(m));
-    mainBox.appendChild(dualHeroRow);
-    mainBox.appendChild(telemetryDrawer);
-    mainBox.appendChild(ClientAppUI.renderOutputFeedbackCard(m));
-    mainBox.appendChild(ClientAppUI.renderQuestionAccent(m));
-    mainBox.appendChild(ClientAppUI.renderCheckpointButton(m));
-    mainBox.appendChild(ClientAppUI.renderDevDrawer(m));
-    mainBox.appendChild(ClientAppUI.renderBottomBar(m, verText));
+      mainBox.appendChild(header);
+      mainBox.appendChild(ClientAppUI.renderStarterPanel(m));
+      mainBox.appendChild(dualHeroRow);
+      mainBox.appendChild(telemetryDrawer);
+      mainBox.appendChild(ClientAppUI.renderOutputFeedbackCard(m));
+      mainBox.appendChild(ClientAppUI.renderQuestionAccent(m));
+      mainBox.appendChild(ClientAppUI.renderCheckpointButton(m));
+      mainBox.appendChild(ClientAppUI.renderDevDrawer(m));
+      mainBox.appendChild(ClientAppUI.renderBottomBar(m, verText));
 
-    container.appendChild(mainBox);
+      container.appendChild(mainBox);
 
-    setTimeout(function() {
-      if (typeof LunoPlaybackLogger !== 'undefined' && LunoPlaybackLogger.renderWidget) {
-        LunoPlaybackLogger.renderWidget(telemetryDrawer);
-      }
-      if (typeof OutboxQueue !== 'undefined' && OutboxQueue.renderWidget) {
-        try { OutboxQueue.renderWidget(); } catch(e){}
-      }
-    }, 30);
+      setTimeout(function() {
+        if (typeof LunoPlaybackLogger !== 'undefined' && LunoPlaybackLogger.renderWidget) {
+          LunoPlaybackLogger.renderWidget(telemetryDrawer);
+        }
+        if (typeof OutboxQueue !== 'undefined' && OutboxQueue.renderWidget) {
+          try { OutboxQueue.renderWidget(); } catch(e){}
+        }
+      }, 30);
   }
 }
 

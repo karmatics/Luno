@@ -98,9 +98,18 @@ class LunoProjectTemplates {
       },
         m('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem' } },
           m('h2', { style: { color: '#00f2fe', fontSize: '1.15rem', margin: 0, display: 'flex', alignItems: 'center', gap: '0.4rem' } }, '🚀 Workspace Projects & Deploy Hub'),
-          m('div', { style: { display: 'flex', gap: '0.4rem', alignItems: 'center' } },
+          m('div', { style: { display: 'flex', gap: '0.4rem', alignItems: 'center', flexWrap: 'wrap' } },
             m('span', { style: { fontSize: '0.72rem', color: '#00f2fe', background: '#003847', border: '1px solid #00f2fe', padding: '0.2rem 0.6rem', borderRadius: '12px', fontWeight: 'bold' } }, 'GitHub: ' + currentAccount),
-            m('span', { style: { fontSize: '0.72rem', color: '#3fb950', background: '#0d2818', border: '1px solid #238636', padding: '0.2rem 0.6rem', borderRadius: '12px', fontWeight: 'bold' } }, 'Target: ' + currentTarget)
+            m('span', { style: { fontSize: '0.72rem', color: '#3fb950', background: '#0d2818', border: '1px solid #238636', padding: '0.2rem 0.6rem', borderRadius: '12px', fontWeight: 'bold' } }, 'Target: ' + currentTarget),
+            m('button', {
+              style: { padding: '0.25rem 0.6rem', background: '#271052', color: '#d2a8ff', border: '1px solid #8257e5', borderRadius: '12px', fontSize: '0.72rem', fontWeight: 'bold', cursor: 'pointer', fontFamily: 'monospace' },
+              title: 'Download complete backup of all projects in a single ZIP file',
+              onclick: function() {
+                if (typeof LunoZipExporter !== 'undefined' && LunoZipExporter.downloadAllProjectsAsZip) {
+                  LunoZipExporter.downloadAllProjectsAsZip();
+                }
+              }
+            }, '📦 Backup All (.ZIP)')
           )
         ),
         m('p', { style: { fontSize: '0.78rem', color: '#8b949e', margin: 0, lineHeight: '1.4' } },
@@ -177,7 +186,7 @@ class LunoProjectTemplates {
         )
       );
 
-      // 1. Separate out the central Library project
+      // Central Library project
       const libProject = projects.find(p => p.isLibrary || p.name === 'Library') || {
         name: 'Library',
         isLibrary: true,
@@ -194,7 +203,7 @@ class LunoProjectTemplates {
         LunoProjectTemplates.buildProjectCard(libProject, container)
       );
 
-      // 2. User applications list
+      // User applications list
       const userProjects = projects.filter(p => !p.isLibrary && p.name !== 'Library');
 
       userProjects.sort((a, b) => {
@@ -217,237 +226,285 @@ class LunoProjectTemplates {
       container.appendChild(librarySection);
       container.appendChild(userProjectsHeader);
       container.appendChild(listContainer);
-    }
-  static buildProjectCard(p, container) {
-        const el = (typeof LunoUIComponents !== 'undefined' && LunoUIComponents.makeElement)
-          ? LunoUIComponents.makeElement
-          : function(tag, attrs) {
-              const e = document.createElement(tag || 'div');
-              if (attrs && typeof attrs === 'object') Object.assign(e, attrs);
-              for (let i = 2; i < arguments.length; i++) {
-                const c = arguments[i];
-                if (c) e.appendChild(typeof c === 'string' ? document.createTextNode(c) : c);
-              }
-              return e;
-            };
-
-        const isLib = p.isLibrary || p.name === 'Library';
-        const isCore = (p.name === 'Luno');
-        const currentTarget = (typeof ClientApp !== 'undefined' && ClientApp.getTargetProject) ? ClientApp.getTargetProject() : '';
-        const isActive = (p.name === currentTarget);
-        const isExpanded = LunoProjectTemplates.expandedProjects.has(p.name);
-
-        const card = el('div', {
-          className: 'luno-project-card',
-          style: {
-            background: isActive ? '#0d2818' : (isLib ? '#170f2a' : '#0d1117'),
-            border: '1px solid ' + (isActive ? '#238636' : (isLib ? '#8257e5' : '#30363d')),
-            borderRadius: '8px',
-            padding: '0.75rem 0.85rem',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '0.4rem',
-            boxShadow: isActive ? '0 0 12px rgba(35,134,54,0.3)' : (isLib ? '0 0 12px rgba(130,87,229,0.2)' : 'none'),
-            transition: 'border-color 0.15s ease, background-color 0.15s ease'
-          }
-        });
-        card.setAttribute('data-project-name', p.name);
-
-        const arrow = el('span', {
-          style: {
-            fontSize: '0.8rem',
-            color: isExpanded ? '#00f2fe' : '#8b949e',
-            fontWeight: 'bold',
-            marginLeft: '0.35rem',
-            cursor: 'pointer',
-            userSelect: 'none'
-          }
-        }, isExpanded ? '▲' : '▼');
-
-        const statusBadge = el('span', {
-          className: 'project-status-badge',
-          style: {
-            fontSize: '0.68rem',
-            fontWeight: 'bold',
-            padding: '0.15rem 0.45rem',
-            borderRadius: '4px',
-            background: isActive ? '#238636' : (isLib ? '#271052' : '#21262d'),
-            color: isActive ? '#fff' : (isLib ? '#d2a8ff' : '#8b949e'),
-            border: isLib ? '1px solid #8257e5' : 'none'
-          }
-        }, isActive ? '✓ Active Target' : (isLib ? 'Shared Dependency Hub' : (isCore ? 'Self-Improve' : 'Project')));
-
-        const btnPreview = el('button', {
-          style: {
-            display: isCore ? 'none' : 'inline-block',
-            padding: '0.3rem 0.6rem',
-            background: '#161b22',
-            color: isLib ? '#d2a8ff' : '#00f2fe',
-            border: '1px solid ' + (isLib ? '#8257e5' : '#00f2fe'),
-            borderRadius: '4px',
-            fontWeight: 'bold',
-            cursor: 'pointer',
-            fontSize: '0.75rem',
-            fontFamily: 'monospace'
-          },
-          onclick: (e) => {
-            e.stopPropagation();
-            if (typeof ClientApp !== 'undefined' && ClientApp.setTargetProject) {
-              ClientApp.setTargetProject(p.name, { openTab: true });
-            }
-            if (typeof LunoSpaDock !== 'undefined') {
-              LunoSpaDock.mountView('app_' + p.name);
-            }
-          }
-        }, isLib ? '👁️ Catalog' : '👁️ Preview');
-
-        const btnSetTarget = el('button', {
-          className: 'btn-set-project-target',
-          style: {
-            display: (!isActive && !isLib) ? 'inline-block' : 'none',
-            padding: '0.3rem 0.6rem',
-            background: '#238636',
-            color: '#fff',
-            border: 'none',
-            borderRadius: '4px',
-            fontWeight: 'bold',
-            cursor: 'pointer',
-            fontSize: '0.75rem',
-            fontFamily: 'monospace'
-          },
-          onclick: (e) => {
-            e.stopPropagation();
-            if (typeof ClientApp !== 'undefined' && ClientApp.setTargetProject) {
-              ClientApp.setTargetProject(p.name);
-              if (typeof ClientApp.showToast === 'function') {
-                ClientApp.showToast('Active Target switched to ' + p.name, 'success', '📁');
-              }
-            }
-          }
-        }, '⚡ Set Target');
-
-        const topRow = el('div', {
-          style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer', flexWrap: 'wrap', gap: '0.4rem' },
-          onclick: async (e) => {
-            if (e.target.tagName === 'BUTTON' || e.target.tagName === 'A' || e.target.tagName === 'INPUT') return;
-            const nowExpanded = !LunoProjectTemplates.expandedProjects.has(p.name);
-            if (nowExpanded) {
-              LunoProjectTemplates.expandedProjects.add(p.name);
-            } else {
-              LunoProjectTemplates.expandedProjects.delete(p.name);
-            }
-            arrow.textContent = nowExpanded ? '▲' : '▼';
-            arrow.style.color = nowExpanded ? '#00f2fe' : '#8b949e';
-            expandPanel.style.display = nowExpanded ? 'flex' : 'none';
-
-            if (nowExpanded && !expandPanel.dataset.loaded) {
-              expandPanel.dataset.loaded = 'true';
-              if (typeof LunoDeployEngine !== 'undefined' && LunoDeployEngine.renderProjectDeployPanel) {
-                await LunoDeployEngine.renderProjectDeployPanel(p.name, el, deploySlot);
-              }
-            }
-          }
-        },
-          el('div', { style: { display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' } },
-            el('strong', { style: { color: isActive ? '#3fb950' : (isLib ? '#d2a8ff' : '#00f2fe'), fontSize: '0.95rem' } },
-              (isLib ? '📚 ' : '📁 ') + p.name + ' ',
-              el('span', { style: { fontWeight: 'normal', fontSize: '0.72rem', color: '#8b949e' } }, '(' + (p.version || '1.0.0') + ')')
-            ),
-            statusBadge
-          ),
-          el('div', { style: { display: 'flex', gap: '0.35rem', alignItems: 'center' } },
-            btnPreview,
-            btnSetTarget,
-            arrow
-          )
-        );
-
-        const deploySlot = el('div', { style: { width: '100%' } });
-        const expandPanel = el('div', {
-          className: 'luno-project-expand-panel',
-          style: {
-            display: isExpanded ? 'flex' : 'none',
-            flexDirection: 'column',
-            gap: '0.5rem',
-            marginTop: '0.35rem',
-            paddingTop: '0.45rem',
-            borderTop: '1px solid #21262d'
-          }
-        },
-          el('div', { style: { fontSize: '0.78rem', color: '#c9d1d9', lineHeight: '1.35' } }, p.description || 'Shared dependency hub containing common modules.'),
-          el('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.72rem', color: '#8b949e', flexWrap: 'wrap', gap: '0.4rem' } },
-            el('span', {}, '📊 ' + (p.fileCount || 0) + ' file(s)'),
-            (!isCore && !isLib) ? el('div', { style: { display: 'flex', gap: '0.35rem' } },
-              el('button', {
-                style: { padding: '0.25rem 0.55rem', background: '#271052', color: '#d2a8ff', border: '1px solid #8257e5', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.72rem', fontFamily: 'monospace' },
-                onclick: (e) => { e.stopPropagation(); LunoProjectTemplates.forkProject(p.name, container); }
-              }, '🍴 Fork'),
-              el('button', {
-                style: { padding: '0.25rem 0.55rem', background: '#21262d', color: '#ff7b72', border: '1px solid #da3633', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.72rem', fontFamily: 'monospace' },
-                onclick: (e) => { e.stopPropagation(); LunoProjectTemplates.deleteProject(p.name, container); }
-              }, '🗑️ Delete')
-            ) : null
-          ),
-          deploySlot
-        );
-
-        if (isExpanded) {
-          expandPanel.dataset.loaded = 'true';
-          if (typeof LunoDeployEngine !== 'undefined' && LunoDeployEngine.renderProjectDeployPanel) {
-            LunoDeployEngine.renderProjectDeployPanel(p.name, el, deploySlot);
-          }
-        }
-
-        card.appendChild(topRow);
-        card.appendChild(expandPanel);
-        return card;
-      }
-  static async deleteProject(projectName, container) {
-    if (!projectName || projectName === 'Luno' || projectName.toLowerCase() === 'library') {
-      alert('Cannot delete core system or shared library folders.');
-      return;
-    }
-
-    const confirmDelete = confirm('⚠️ Are you sure you want to permanently delete project [' + projectName + '] from disk? This cannot be undone.');
-    if (!confirmDelete) return;
-
-    try {
-      const serverScriptObj = {
-        files: [],
-        serverScript: [
-          'const fs = require("fs");',
-          'const path = require("path");',
-          'const projRoot = LunoServer.resolveProjectBaseDir("' + projectName + '");',
-          'const webRoot = LunoServer.getWebRootDir();',
-          'if (projRoot && projRoot.startsWith(webRoot) && projRoot !== webRoot && !projRoot.endsWith("Luno")) {',
-          '  fs.rmSync(projRoot, { recursive: true, force: true });',
-          '  return "Deleted project folder: " + projRoot;',
-          '} else {',
-          '  throw new Error("Invalid project deletion path target.");',
-          '}'
-        ].join('\n')
-      };
-
-      const data = await LunoApiClient.savePayload(serverScriptObj, projectName);
-
-      if (data && data.success) {
-        if (typeof ClientApp !== 'undefined') {
-          if (ClientApp.getTargetProject() === projectName) {
-            ClientApp.setTargetProject('Luno');
-          }
-          if (ClientApp.showToast) {
-            ClientApp.showToast('Deleted project [' + projectName + '] from disk', 'info', '🗑️');
-          }
-        }
-        LunoProjectTemplates.mountFullPageView(container);
-      } else {
-        alert('Delete failed: ' + ((data && data.error) || 'Storage error'));
-      }
-    } catch (e) {
-      alert('Delete network exception: ' + e.message);
-    }
   }
+  static buildProjectCard(p, container) {
+      const el = (typeof LunoUIComponents !== 'undefined' && LunoUIComponents.makeElement)
+        ? LunoUIComponents.makeElement
+        : function(tag, attrs) {
+            const e = document.createElement(tag || 'div');
+            if (attrs && typeof attrs === 'object') Object.assign(e, attrs);
+            for (let i = 2; i < arguments.length; i++) {
+              const c = arguments[i];
+              if (c) e.appendChild(typeof c === 'string' ? document.createTextNode(c) : c);
+            }
+            return e;
+          };
 
+      const isLib = p.isLibrary || p.name === 'Library';
+      const isCore = (p.name === 'Luno');
+      const currentTarget = (typeof ClientApp !== 'undefined' && ClientApp.getTargetProject) ? ClientApp.getTargetProject() : '';
+      const isActive = (p.name === currentTarget);
+      const isExpanded = LunoProjectTemplates.expandedProjects.has(p.name);
+      const isStatic = (typeof LunoFileSystem !== 'undefined' && LunoFileSystem.isStaticHosting());
+
+      const card = el('div', {
+        className: 'luno-project-card',
+        style: {
+          background: isActive ? '#0d2818' : (isLib ? '#170f2a' : '#0d1117'),
+          border: '1px solid ' + (isActive ? '#238636' : (isLib ? '#8257e5' : '#30363d')),
+          borderRadius: '8px',
+          padding: '0.75rem 0.85rem',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '0.4rem',
+          boxShadow: isActive ? '0 0 12px rgba(35,134,54,0.3)' : (isLib ? '0 0 12px rgba(130,87,229,0.2)' : 'none'),
+          transition: 'border-color 0.15s ease, background-color 0.15s ease'
+        }
+      });
+      card.setAttribute('data-project-name', p.name);
+
+      const arrow = el('span', {
+        style: {
+          fontSize: '0.8rem',
+          color: isExpanded ? '#00f2fe' : '#8b949e',
+          fontWeight: 'bold',
+          marginLeft: '0.35rem',
+          cursor: 'pointer',
+          userSelect: 'none'
+        }
+      }, isExpanded ? '▲' : '▼');
+
+      const statusBadge = el('span', {
+        className: 'project-status-badge',
+        style: {
+          fontSize: '0.68rem',
+          fontWeight: 'bold',
+          padding: '0.15rem 0.45rem',
+          borderRadius: '4px',
+          background: isActive ? '#238636' : (isLib ? '#271052' : '#21262d'),
+          color: isActive ? '#fff' : (isLib ? '#d2a8ff' : '#8b949e'),
+          border: isLib ? '1px solid #8257e5' : 'none'
+        }
+      }, isActive ? '✓ Active Target' : (isLib ? 'Shared Dependency Hub' : (isCore ? 'Self-Improve' : 'Project')));
+
+      const btnPreview = el('button', {
+        style: {
+          display: isCore ? 'none' : 'inline-block',
+          padding: '0.3rem 0.6rem',
+          background: '#161b22',
+          color: isLib ? '#d2a8ff' : '#00f2fe',
+          border: '1px solid ' + (isLib ? '#8257e5' : '#00f2fe'),
+          borderRadius: '4px',
+          fontWeight: 'bold',
+          cursor: 'pointer',
+          fontSize: '0.75rem',
+          fontFamily: 'monospace'
+        },
+        onclick: (e) => {
+          e.stopPropagation();
+          if (typeof ClientApp !== 'undefined' && ClientApp.setTargetProject) {
+            ClientApp.setTargetProject(p.name, { openTab: true });
+          }
+          if (typeof LunoSpaDock !== 'undefined') {
+            LunoSpaDock.mountView('app_' + p.name);
+          }
+        }
+      }, isLib ? '👁️ Catalog' : '👁️ Preview');
+
+      const btnSetTarget = el('button', {
+        className: 'btn-set-project-target',
+        style: {
+          display: (!isActive && !isLib) ? 'inline-block' : 'none',
+          padding: '0.3rem 0.6rem',
+          background: '#238636',
+          color: '#fff',
+          border: 'none',
+          borderRadius: '4px',
+          fontWeight: 'bold',
+          cursor: 'pointer',
+          fontSize: '0.75rem',
+          fontFamily: 'monospace'
+        },
+        onclick: (e) => {
+          e.stopPropagation();
+          if (typeof ClientApp !== 'undefined' && ClientApp.setTargetProject) {
+            ClientApp.setTargetProject(p.name);
+            if (typeof ClientApp.showToast === 'function') {
+              ClientApp.showToast('Active Target switched to ' + p.name, 'success', '📁');
+            }
+          }
+        }
+      }, '⚡ Set Target');
+
+      const topRow = el('div', {
+        style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer', flexWrap: 'wrap', gap: '0.4rem' },
+        onclick: async (e) => {
+          if (e.target.tagName === 'BUTTON' || e.target.tagName === 'A' || e.target.tagName === 'INPUT') return;
+          const nowExpanded = !LunoProjectTemplates.expandedProjects.has(p.name);
+          if (nowExpanded) {
+            LunoProjectTemplates.expandedProjects.add(p.name);
+          } else {
+            LunoProjectTemplates.expandedProjects.delete(p.name);
+          }
+          arrow.textContent = nowExpanded ? '▲' : '▼';
+          arrow.style.color = nowExpanded ? '#00f2fe' : '#8b949e';
+          expandPanel.style.display = nowExpanded ? 'flex' : 'none';
+
+          if (nowExpanded && !expandPanel.dataset.loaded) {
+            expandPanel.dataset.loaded = 'true';
+            if (typeof LunoDeployEngine !== 'undefined' && LunoDeployEngine.renderProjectDeployPanel) {
+              await LunoDeployEngine.renderProjectDeployPanel(p.name, el, deploySlot);
+            }
+          }
+        }
+      },
+        el('div', { style: { display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' } },
+          el('strong', { style: { color: isActive ? '#3fb950' : (isLib ? '#d2a8ff' : '#00f2fe'), fontSize: '0.95rem' } },
+            (isLib ? '📚 ' : '📁 ') + p.name + ' ',
+            el('span', { style: { fontWeight: 'normal', fontSize: '0.72rem', color: '#8b949e' } }, '(' + (p.version || '1.0.0') + ')')
+          ),
+          statusBadge
+        ),
+        el('div', { style: { display: 'flex', gap: '0.35rem', alignItems: 'center' } },
+          btnPreview,
+          btnSetTarget,
+          arrow
+        )
+      );
+
+      const deploySlot = el('div', { style: { width: '100%' } });
+      const expandPanel = el('div', {
+        className: 'luno-project-expand-panel',
+        style: {
+          display: isExpanded ? 'flex' : 'none',
+          flexDirection: 'column',
+          gap: '0.5rem',
+          marginTop: '0.35rem',
+          paddingTop: '0.45rem',
+          borderTop: '1px solid #21262d'
+        }
+      },
+        el('div', { style: { fontSize: '0.78rem', color: '#c9d1d9', lineHeight: '1.35' } }, p.description || 'Shared dependency hub containing common modules.'),
+        el('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.72rem', color: '#8b949e', flexWrap: 'wrap', gap: '0.4rem' } },
+          el('span', {}, '📊 ' + (p.fileCount || 0) + ' file(s)'),
+          el('div', { style: { display: 'flex', gap: '0.35rem', flexWrap: 'wrap' } },
+            el('button', {
+              style: { padding: '0.25rem 0.55rem', background: '#0d2818', color: '#3fb950', border: '1px solid #238636', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.72rem', fontFamily: 'monospace' },
+              title: 'Download complete project as a standard .ZIP file',
+              onclick: (e) => {
+                e.stopPropagation();
+                if (typeof LunoZipExporter !== 'undefined' && LunoZipExporter.downloadProjectAsZip) {
+                  LunoZipExporter.downloadProjectAsZip(p.name);
+                }
+              }
+            }, '⬇️ ZIP'),
+            isStatic ? el('button', {
+              style: { padding: '0.25rem 0.55rem', background: '#161b22', color: '#00f2fe', border: '1px solid #00f2fe88', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.72rem', fontFamily: 'monospace' },
+              title: 'Clear IndexedDB cache and re-fetch clean files from GitHub Pages',
+              onclick: async (e) => {
+                e.stopPropagation();
+                if (confirm('🔄 Reset [' + p.name + '] cache in browser storage to match the deployed version on GitHub Pages? (Any unsaved local edits in this browser will be replaced)')) {
+                  if (typeof LunoIndexedDbAdapter !== 'undefined' && LunoIndexedDbAdapter.resetProjectToDeployed) {
+                    await LunoIndexedDbAdapter.resetProjectToDeployed(p.name);
+                    if (typeof ClientApp !== 'undefined' && ClientApp.showToast) {
+                      ClientApp.showToast('Reset [' + p.name + '] to latest deployed version!', 'success', '🔄');
+                    }
+                    if (typeof LunoSpaDock !== 'undefined') {
+                      LunoSpaDock.reloadActivePreviewIframe(p.name);
+                    }
+                  }
+                }
+              }
+            }, '🔄 Reset Cache') : null,
+            (!isCore && !isLib) ? el('button', {
+              style: { padding: '0.25rem 0.55rem', background: '#271052', color: '#d2a8ff', border: '1px solid #8257e5', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.72rem', fontFamily: 'monospace' },
+              onclick: (e) => { e.stopPropagation(); LunoProjectTemplates.forkProject(p.name, container); }
+            }, '🍴 Fork') : null,
+            (!isCore && !isLib) ? el('button', {
+              style: { padding: '0.25rem 0.55rem', background: '#21262d', color: '#ff7b72', border: '1px solid #da3633', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.72rem', fontFamily: 'monospace' },
+              onclick: (e) => { e.stopPropagation(); LunoProjectTemplates.deleteProject(p.name, container); }
+            }, '🗑️ Delete') : null
+          )
+        ),
+        deploySlot
+      );
+
+      if (isExpanded) {
+        expandPanel.dataset.loaded = 'true';
+        if (typeof LunoDeployEngine !== 'undefined' && LunoDeployEngine.renderProjectDeployPanel) {
+          LunoDeployEngine.renderProjectDeployPanel(p.name, el, deploySlot);
+        }
+      }
+
+      card.appendChild(topRow);
+      card.appendChild(expandPanel);
+      return card;
+  }
+  static async deleteProject(projectName, container) {
+      if (!projectName || projectName === 'Luno' || projectName.toLowerCase() === 'library') {
+        alert('Cannot delete core system or shared library folders.');
+        return;
+      }
+
+      const confirmDelete = confirm('⚠️ Are you sure you want to permanently delete project [' + projectName + ']? This cannot be undone.');
+      if (!confirmDelete) return;
+
+      try {
+        const isStatic = (typeof LunoFileSystem !== 'undefined' && typeof LunoFileSystem.isStaticHosting === 'function')
+          ? LunoFileSystem.isStaticHosting()
+          : (typeof LunoApiClient !== 'undefined' && LunoApiClient.isStaticMode());
+
+        if (isStatic) {
+          if (typeof LunoIndexedDbAdapter !== 'undefined' && LunoIndexedDbAdapter.deleteProject) {
+            await LunoIndexedDbAdapter.deleteProject(projectName);
+            if (typeof ClientApp !== 'undefined') {
+              if (ClientApp.getTargetProject() === projectName) {
+                ClientApp.setTargetProject('Luno');
+              }
+              if (ClientApp.showToast) {
+                ClientApp.showToast('Deleted project [' + projectName + '] from browser storage', 'info', '🗑️');
+              }
+            }
+            LunoProjectTemplates.mountFullPageView(container);
+            return;
+          }
+        }
+
+        const serverScriptObj = {
+          files: [],
+          serverScript: [
+            'const fs = require("fs");',
+            'const path = require("path");',
+            'const projRoot = LunoServer.resolveProjectBaseDir("' + projectName + '");',
+            'const webRoot = LunoServer.getWebRootDir();',
+            'if (projRoot && projRoot.startsWith(webRoot) && projRoot !== webRoot && !projRoot.endsWith("Luno")) {',
+            '  fs.rmSync(projRoot, { recursive: true, force: true });',
+            '  return "Deleted project folder: " + projRoot;',
+            '} else {',
+            '  throw new Error("Invalid project deletion path target.");',
+            '}'
+          ].join('\n')
+        };
+
+        const data = await LunoApiClient.savePayload(serverScriptObj, projectName);
+
+        if (data && data.success) {
+          if (typeof ClientApp !== 'undefined') {
+            if (ClientApp.getTargetProject() === projectName) {
+              ClientApp.setTargetProject('Luno');
+            }
+            if (ClientApp.showToast) {
+              ClientApp.showToast('Deleted project [' + projectName + '] from disk', 'info', '🗑️');
+            }
+          }
+          LunoProjectTemplates.mountFullPageView(container);
+        } else {
+          alert('Delete failed: ' + ((data && data.error) || 'Storage error'));
+        }
+      } catch (e) {
+        alert('Delete exception: ' + e.message);
+      }
+  }
   static async createFromTemplate(templateId, parentDir) {
         const tpl = LunoProjectTemplates.TEMPLATES.find(t => t.id === templateId);
         if (!tpl) return;

@@ -149,6 +149,16 @@ class InboxActionTimer {
       }
     }, 8000);
   }
+
+  static get defaultDuration() {
+      try {
+        if (typeof localStorage !== 'undefined') {
+          var val = parseInt(localStorage.getItem('luno_timer_duration') || '3500', 10);
+          return isNaN(val) ? 3500 : val;
+        }
+      } catch (e) {}
+      return 3500;
+  }
 }
 
 globalThis.InboxActionTimer = InboxActionTimer;

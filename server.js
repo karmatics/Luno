@@ -7,6 +7,7 @@ process.on('uncaughtException', (err) => {
 });
 
 const PORT = process.env.PORT || 8080;
+const HOST = process.env.HOST || '127.0.0.1';
 
 const defaultDir = fs.existsSync(path.join(__dirname, 'Luno', 'luno.json'))
   ? path.join(__dirname, 'Luno')
@@ -43,6 +44,6 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
-server.listen(PORT, () => {
-  console.log('[Luno Server] Active on http://localhost:' + PORT);
+server.listen(PORT, HOST, () => {
+  console.log('[Luno Server] Bound securely to http://' + HOST + ':' + PORT);
 });

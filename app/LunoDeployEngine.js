@@ -33,58 +33,85 @@ class LunoDeployEngine {
             }
           } catch(e) {}
         }
+
     static get GITHUB_ORG() {
-      return LunoDeployEngine.getGithubAccount();
-    };
+        return LunoDeployEngine.getGithubAccount();
+    }
+
   static getGithubToken() {
-    try {
-      if (typeof localStorage !== 'undefined') {
-        return localStorage.getItem(LunoDeployEngine.GITHUB_TOKEN_KEY) || '';
-      }
-    } catch(e) {}
-    return '';
+      try {
+        if (typeof sessionStorage !== 'undefined') {
+          var sTok = sessionStorage.getItem(LunoDeployEngine.GITHUB_TOKEN_KEY);
+          if (sTok) return sTok;
+        }
+        if (typeof localStorage !== 'undefined') {
+          return localStorage.getItem(LunoDeployEngine.GITHUB_TOKEN_KEY) || '';
+        }
+      } catch(e) {}
+      return '';
   }
 
-  static setGithubToken(token) {
-    try {
-      if (typeof localStorage !== 'undefined') {
-        localStorage.setItem(LunoDeployEngine.GITHUB_TOKEN_KEY, (token || '').trim());
-      }
-    } catch(e) {}
+  static setGithubToken(token, sessionOnly) {
+      var clean = (token || '').trim();
+      try {
+        if (sessionOnly && typeof sessionStorage !== 'undefined') {
+          sessionStorage.setItem(LunoDeployEngine.GITHUB_TOKEN_KEY, clean);
+          if (typeof localStorage !== 'undefined') {
+            localStorage.removeItem(LunoDeployEngine.GITHUB_TOKEN_KEY);
+          }
+          return;
+        }
+        if (typeof localStorage !== 'undefined') {
+          localStorage.setItem(LunoDeployEngine.GITHUB_TOKEN_KEY, clean);
+        }
+        if (typeof sessionStorage !== 'undefined') {
+          sessionStorage.setItem(LunoDeployEngine.GITHUB_TOKEN_KEY, clean);
+        }
+      } catch(e) {}
   }
-
   static getRepoMappings() {
-    var defaults = {
-      'Luno': 'Luno',
-      'LunoTests': 'LunoTests',
-      'SvgStudio': 'SvgStudio',
-      'Es6Converter': 'Es6Converter',
-      'BookmarkletWorkshop': 'BookmarkletWorkshop',
-      'AardvarkPlaylist': 'AardvarkPlaylist',
-      'aardvarkBookmarklet': 'aardvarkBookmarklet',
-      'Basic3D': 'Basic3D',
-      'VideoEditor': 'VideoEditor',
-      'guessTheNoteGame': 'guessTheNoteGame',
-      'VideoPrepper': 'VideoPrepper',
-      'BasicsWithDialogBox': 'BasicsWithDialogBox',
-      'SimpleTest': 'SimpleTest',
-      'MathStorm': 'MathStorm',
-      'AlphabetGame': 'AlphabetGame',
-      'RobotDividend': 'RobotDividend',
-      'Calculator': 'Calculator',
-      'LegoDetective': 'LegoDetective',
-      'Library': 'Library',
-      'images': 'images',
-      'MySituation': 'situation'
-    };
+      var defaults = {
+        'Luno': 'Luno',
+        'LunoTests': 'LunoTests',
+        'SvgStudio': 'SvgStudio',
+        'Es6Converter': 'Es6Converter',
+        'BookmarkletWorkshop': 'BookmarkletWorkshop',
+        'AardvarkPlaylist': 'AardvarkPlaylist',
+        'aardvarkBookmarklet': 'aardvarkBookmarklet',
+        'Basic3D': 'Basic3D',
+        'VideoEditor': 'VideoEditor',
+        'guessTheNoteGame': 'guessTheNoteGame',
+        'VideoPrepper': 'VideoPrepper',
+        'BasicsWithDialogBox': 'BasicsWithDialogBox',
+        'SimpleTest': 'SimpleTest',
+        'MathStorm': 'MathStorm',
+        'AlphabetGame': 'AlphabetGame',
+        'RobotDividend': 'RobotDividend',
+        'Calculator': 'Calculator',
+        'LegoDetective': 'LegoDetective',
+        'Library': 'Library',
+        'images': 'images',
+        'MySituation': 'situation',
+        'situation': 'situation',
+        'accuCad': 'accuCad',
+        'accudraw': 'accudraw',
+        'ValuationOfAccudraw': 'ValuationOfAccudraw',
+        'teacup': 'teacup',
+        'TriBlob': 'TriBlob',
+        'squircle': 'squircle',
+        'Squircle': 'Squircle',
+        'PleasureAndPain': 'PleasureAndPain',
+        'BulbAndButton': 'BulbAndButton',
+        'Penrose': 'Penrose'
+      };
 
-    try {
-      if (typeof localStorage !== 'undefined') {
-        var raw = localStorage.getItem(LunoDeployEngine.REPO_MAP_KEY);
-        if (raw) return Object.assign(defaults, JSON.parse(raw));
-      }
-    } catch(e) {}
-    return defaults;
+      try {
+        if (typeof localStorage !== 'undefined') {
+          var raw = localStorage.getItem(LunoDeployEngine.REPO_MAP_KEY);
+          if (raw) return Object.assign(defaults, JSON.parse(raw));
+        }
+      } catch(e) {}
+      return defaults;
   }
   static setRepoMapping(projectName, remoteRepoName) {
     if (!projectName) return;
@@ -188,76 +215,76 @@ class LunoDeployEngine {
     }
 
   static async ensureGitHubPagesParity(projectName) {
-        var pName = projectName || (typeof ClientApp !== 'undefined' && ClientApp.getTargetProject ? ClientApp.getTargetProject() : 'Luno');
+      var pName = projectName || (typeof ClientApp !== 'undefined' && ClientApp.getTargetProject ? ClientApp.getTargetProject() : 'Luno');
 
-        try {
-          var serverScript = [
-            'const fs = require("fs");',
-            'const path = require("path");',
-            'const projRoot = LunoServer.resolveProjectBaseDir("' + pName + '");',
-            'const webRoot = LunoServer.getWebRootDir();',
-            'const libraryRoot = path.join(webRoot, "Library");',
-            'let actions = [];',
-            '',
-            '// 1. Ensure .nojekyll exists in project root',
-            'const noJekyllPath = path.join(projRoot, ".nojekyll");',
-            'if (!fs.existsSync(noJekyllPath)) {',
-            '  fs.writeFileSync(noJekyllPath, "", "utf8");',
-            '  actions.push("Created .nojekyll in " + path.basename(projRoot));',
-            '}',
-            '',
-            '// 2. Special handling for Library as a standalone repository',
-            'if (pName === "Library" || path.basename(projRoot).toLowerCase() === "library") {',
-            '  const indexPath = path.join(projRoot, "index.html");',
-            '  if (!fs.existsSync(indexPath)) {',
-            '    const files = fs.readdirSync(projRoot).filter(f => f.endsWith(".js") || f.endsWith(".css"));',
-            '    const listHtml = files.map(f => `<li><a href="${f}">${f}</a></li>`).join("\\n    ");',
-            '    const catalogHtml = `<!DOCTYPE html>\\n<html>\\n<head>\\n  <meta charset="UTF-8">\\n  <title>Luno Shared Library</title>\\n  <style>body { background:#0d1117; color:#c9d1d9; font-family:monospace; padding:2rem; } a { color:#58a6ff; text-decoration:none; } a:hover { text-decoration:underline; } h2 { color:#00f2fe; }</style>\\n</head>\\n<body>\\n  <h2>📚 Luno Shared Library Hub</h2>\\n  <p style="color:#8b949e;">Central repository of shared utilities, loaders, and UI components for Karmatics applications.</p>\\n  <ul>\\n    ${listHtml}\\n  </ul>\\n</body>\\n</html>`;',
-            '    fs.writeFileSync(indexPath, catalogHtml, "utf8");',
-            '    actions.push("Generated index.html catalog for Library repository");',
-            '  }',
-            '  return actions.length > 0 ? actions.join("\\n") : "Library repository assets verified cleanly.";',
-            '}',
-            '',
-            '// 3. Purge redundant nested Library directories from sibling app directory',
-            'if (pName !== "Library" && path.basename(projRoot).toLowerCase() !== "library") {',
-            '  const nestedLibPath = path.join(projRoot, "Library");',
-            '  const nestedLibLower = path.join(projRoot, "library");',
-            '  if (fs.existsSync(nestedLibPath)) {',
-            '    fs.rmSync(nestedLibPath, { recursive: true, force: true });',
-            '    actions.push("Deleted redundant nested Library/ directory in [" + pName + "]");',
-            '  }',
-            '  if (fs.existsSync(nestedLibLower)) {',
-            '    fs.rmSync(nestedLibLower, { recursive: true, force: true });',
-            '    actions.push("Deleted redundant nested library/ directory in [" + pName + "]");',
-            '  }',
-            '',
-            '  // 4. Update index.html with resilient fork-to-karmatics Library loader fallback',
-            '  const indexPath = path.join(projRoot, "index.html");',
-            '  if (fs.existsSync(indexPath)) {',
-            '    let indexHtml = fs.readFileSync(indexPath, "utf8");',
-            '    const resilientLoaderTag = \'<script src="/Library/LunoLoader.js" onerror="this.onerror=null; (function(el){ var u=(window.location.hostname.endsWith(\\\'.github.io\\\')?window.location.hostname.split(\\\'.\\\')[0]:\\\'karmatics\\\'); el.src=\\\'https://\\\'+u+\\\'.github.io/Library/LunoLoader.js\\\'; el.onerror=function(){ el.onerror=null; el.src=\\\'https://karmatics.github.io/Library/LunoLoader.js\\\'; }; })(this);"><\\/script>\';',
-            '    if (!indexHtml.includes("karmatics.github.io/Library/LunoLoader.js")) {',
-            '      indexHtml = indexHtml.replace(/<script[^>]*src=["\'][^"\']*LunoLoader\\.js["\'][^>]*>\\s*<\\/script>/i, resilientLoaderTag);',
-            '      fs.writeFileSync(indexPath, indexHtml, "utf8");',
-            '      actions.push("Updated index.html in [" + pName + "] with resilient fork-aware Library loader fallback");',
-            '    }',
-            '  }',
-            '}',
-            '',
-            'return actions.length > 0 ? actions.join("\\n") : "GitHub Pages assets verified cleanly.";'
-          ].join('\n');
+      try {
+        var serverScript = [
+          'const fs = require("fs");',
+          'const path = require("path");',
+          'const pName = "' + pName.replace(/"/g, '\\"') + '";',
+          'const projRoot = LunoServer.resolveProjectBaseDir(pName);',
+          'const webRoot = LunoServer.getWebRootDir();',
+          'let actions = [];',
+          '',
+          '// 1. Ensure .nojekyll exists in project root',
+          'const noJekyllPath = path.join(projRoot, ".nojekyll");',
+          'if (!fs.existsSync(noJekyllPath)) {',
+          '  fs.writeFileSync(noJekyllPath, "", "utf8");',
+          '  actions.push("Created .nojekyll in " + path.basename(projRoot));',
+          '}',
+          '',
+          '// 2. Special handling for Library as a standalone repository',
+          'if (pName === "Library" || path.basename(projRoot).toLowerCase() === "library") {',
+          '  const indexPath = path.join(projRoot, "index.html");',
+          '  if (!fs.existsSync(indexPath)) {',
+          '    const files = fs.readdirSync(projRoot).filter(f => f.endsWith(".js") || f.endsWith(".css"));',
+          '    const listHtml = files.map(f => `<li><a href="${f}">${f}</a></li>`).join("\\n    ");',
+          '    const catalogHtml = `<!DOCTYPE html>\\n<html>\\n<head>\\n  <meta charset="UTF-8">\\n  <title>Luno Shared Library</title>\\n  <style>body { background:#0d1117; color:#c9d1d9; font-family:monospace; padding:2rem; } a { color:#58a6ff; text-decoration:none; } a:hover { text-decoration:underline; } h2 { color:#00f2fe; }</style>\\n</head>\\n<body>\\n  <h2>📚 Luno Shared Library Hub</h2>\\n  <p style="color:#8b949e;">Central repository of shared utilities, loaders, and UI components for Karmatics applications.</p>\\n  <ul>\\n    ${listHtml}\\n  </ul>\\n</body>\\n</html>`;',
+          '    fs.writeFileSync(indexPath, catalogHtml, "utf8");',
+          '    actions.push("Generated index.html catalog for Library repository");',
+          '  }',
+          '  return actions.length > 0 ? actions.join("\\n") : "Library repository assets verified cleanly.";',
+          '}',
+          '',
+          '// 3. Purge redundant nested Library directories from sibling app directory',
+          'if (pName !== "Library" && path.basename(projRoot).toLowerCase() !== "library") {',
+          '  const nestedLibPath = path.join(projRoot, "Library");',
+          '  const nestedLibLower = path.join(projRoot, "library");',
+          '  if (fs.existsSync(nestedLibPath)) {',
+          '    fs.rmSync(nestedLibPath, { recursive: true, force: true });',
+          '    actions.push("Deleted redundant nested Library/ directory in [" + pName + "]");',
+          '  }',
+          '  if (fs.existsSync(nestedLibLower)) {',
+          '    fs.rmSync(nestedLibLower, { recursive: true, force: true });',
+          '    actions.push("Deleted redundant nested library/ directory in [" + pName + "]");',
+          '  }',
+          '',
+          '  // 4. Update index.html with resilient fork-to-karmatics Library loader fallback',
+          '  const indexPath = path.join(projRoot, "index.html");',
+          '  if (fs.existsSync(indexPath)) {',
+          '    let indexHtml = fs.readFileSync(indexPath, "utf8");',
+          '    const resilientLoaderTag = \'<script src="/Library/LunoLoader.js" onerror="this.onerror=null; (function(el){ var u=(window.location.hostname.endsWith(\\\'.github.io\\\')?window.location.hostname.split(\\\'.\\\')[0]:\\\'karmatics\\\'); el.src=\\\'https://\\\'+u+\\\'.github.io/Library/LunoLoader.js\\\'; el.onerror=function(){ el.onerror=null; el.src=\\\'https://karmatics.github.io/Library/LunoLoader.js\\\'; }; })(this);"><\\/script>\';',
+          '    if (!indexHtml.includes("karmatics.github.io/Library/LunoLoader.js")) {',
+          '      indexHtml = indexHtml.replace(/<script[^>]*src=["\'][^"\']*LunoLoader\\.js["\'][^>]*>\\s*<\\/script>/i, resilientLoaderTag);',
+          '      fs.writeFileSync(indexPath, indexHtml, "utf8");',
+          '      actions.push("Updated index.html in [" + pName + "] with resilient fork-aware Library loader fallback");',
+          '    }',
+          '  }',
+          '}',
+          '',
+          'return actions.length > 0 ? actions.join("\\n") : "GitHub Pages assets verified cleanly.";'
+        ].join('\n');
 
-          var res = await fetch('/api/save?project=' + encodeURIComponent(pName), {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ files: [], serverScript: serverScript, project: pName })
-          });
-          return await res.json();
-        } catch (e) {
-          return { success: false, error: e.message };
-        }
+        var res = await fetch('/api/save?project=' + encodeURIComponent(pName), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-Luno-Client': '1' },
+          body: JSON.stringify({ files: [], serverScript: serverScript, project: pName })
+        });
+        return await res.json();
+      } catch (e) {
+        return { success: false, error: e.message };
       }
+  }
   static async checkProjectGitStatus(projectName) {
     var pName = projectName || (typeof ClientApp !== 'undefined' && ClientApp.getTargetProject ? ClientApp.getTargetProject() : 'Luno');
 
@@ -360,13 +387,215 @@ class LunoDeployEngine {
       var pName = projectName || (typeof ClientApp !== 'undefined' && ClientApp.getTargetProject ? ClientApp.getTargetProject() : 'Luno');
       var remoteName = LunoDeployEngine.getRemoteRepoName(pName);
       var account = LunoDeployEngine.getGithubAccount();
-      var msg = commitMsg || ('[' + pName + '] Automated deployment via Luno Workspace');
+      var msg = commitMsg || ('[' + pName + '] Checkpoint ' + new Date().toLocaleString());
       var token = LunoDeployEngine.getGithubToken();
       var isLibraryProject = (pName.toLowerCase() === 'library');
       var opts = options || {};
       var deployToPages = opts.deployToPages !== false;
 
       try {
+        var isStatic = (typeof LunoFileSystem !== 'undefined' && typeof LunoFileSystem.isStaticHosting === 'function')
+          ? LunoFileSystem.isStaticHosting()
+          : (typeof LunoApiClient !== 'undefined' && LunoApiClient.isStaticMode());
+
+        if (isStatic) {
+          // Pure Browser Local Snapshot: No GitHub API calls or PAT required
+          if (!deployToPages) {
+            try {
+              var metaRes = await LunoApiClient.fetchFsRead('luno.json', pName);
+              var meta = {};
+              if (metaRes && metaRes.content) {
+                meta = JSON.parse(metaRes.content);
+              }
+              meta.processedCountSinceCheckpoint = 0;
+              meta.lastCheckpointTime = new Date().toISOString();
+              meta.pendingCheckpointDescription = msg;
+
+              var adapter = LunoFileSystem.getAdapter();
+              if (adapter && adapter.write) {
+                await adapter.write('luno.json', JSON.stringify(meta, null, 2) + '\n', pName);
+              }
+
+              if (typeof ClientApp !== 'undefined') {
+                ClientApp.uncommittedCount = 0;
+                await ClientApp.fetchCodebaseMetrics(pName);
+              }
+            } catch(metaErr) {
+              console.warn('[LunoDeployEngine] Static checkpoint metadata warning:', metaErr.message);
+            }
+
+            return {
+              success: true,
+              output: '📸 Recorded local snapshot for [' + pName + '] in IndexedDB storage.\n(Remote GitHub push skipped: Local Snapshot Only mode)'
+            };
+          }
+
+          // Live GitHub Pages Deploy via Git Data API (Single Atomic Commit)
+          if (!token) {
+            return {
+              success: false,
+              error: 'A GitHub Personal Access Token (PAT) is required to deploy directly from browser-hosted Luno on GitHub Pages. Please enter your PAT in the Deploy Hub.'
+            };
+          }
+
+          try {
+            await LunoDeployEngine.createRemoteRepoOnGitHub(remoteName);
+          } catch(e) {}
+
+          var codeData = await LunoApiClient.fetchAllCode(pName, {
+            includeProjectLibrary: isLibraryProject,
+            includeAllLibrary: isLibraryProject
+          });
+
+          if (!codeData || !codeData.filesMap || Object.keys(codeData.filesMap).length === 0) {
+            return { success: false, error: 'Could not assemble project files from IndexedDB.' };
+          }
+
+          var headers = {
+            'Authorization': 'token ' + token,
+            'Accept': 'application/vnd.github.v3+json',
+            'Content-Type': 'application/json'
+          };
+
+          var filesMap = codeData.filesMap;
+          var treeItems = [];
+
+          // 1. Create Git Blobs for all project files
+          for (var rawPath in filesMap) {
+            if (!Object.prototype.hasOwnProperty.call(filesMap, rawPath)) continue;
+            var cleanPath = rawPath.replace(/\\/g, '/');
+            if (cleanPath.startsWith(pName + '/')) cleanPath = cleanPath.slice(pName.length + 1);
+            if (!isLibraryProject && cleanPath.startsWith('Library/')) continue;
+
+            var content = filesMap[rawPath] || '';
+            var b64Content = btoa(unescape(encodeURIComponent(content)));
+
+            var blobRes = await fetch('https://api.github.com/repos/' + encodeURIComponent(account) + '/' + encodeURIComponent(remoteName) + '/git/blobs', {
+              method: 'POST',
+              headers: headers,
+              body: JSON.stringify({ content: b64Content, encoding: 'base64' })
+            });
+
+            if (!blobRes.ok) {
+              var blobErr = await blobRes.json();
+              throw new Error('Failed to create Git blob for ' + cleanPath + ': ' + (blobErr.message || blobRes.statusText));
+            }
+
+            var blobData = await blobRes.json();
+            treeItems.push({
+              path: cleanPath,
+              mode: '100644',
+              type: 'blob',
+              sha: blobData.sha
+            });
+          }
+
+          // 2. Ensure .nojekyll is included in the tree
+          if (!treeItems.some(function(t) { return t.path === '.nojekyll'; })) {
+            var njBlobRes = await fetch('https://api.github.com/repos/' + encodeURIComponent(account) + '/' + encodeURIComponent(remoteName) + '/git/blobs', {
+              method: 'POST',
+              headers: headers,
+              body: JSON.stringify({ content: '', encoding: 'utf-8' })
+            });
+            if (njBlobRes.ok) {
+              var njBlob = await njBlobRes.json();
+              treeItems.push({ path: '.nojekyll', mode: '100644', type: 'blob', sha: njBlob.sha });
+            }
+          }
+
+          // 3. Resolve parent commit (if branch exists)
+          var latestCommitSha = null;
+          var refRes = await fetch('https://api.github.com/repos/' + encodeURIComponent(account) + '/' + encodeURIComponent(remoteName) + '/git/ref/heads/main', {
+            method: 'GET',
+            headers: headers
+          });
+
+          if (refRes.ok) {
+            var refData = await refRes.json();
+            latestCommitSha = refData.object ? refData.object.sha : null;
+          }
+
+          // 4. Create Git Tree
+          var treePayload = { tree: treeItems };
+          if (latestCommitSha) treePayload.base_tree = latestCommitSha;
+
+          var treeRes = await fetch('https://api.github.com/repos/' + encodeURIComponent(account) + '/' + encodeURIComponent(remoteName) + '/git/trees', {
+            method: 'POST',
+            headers: headers,
+            body: JSON.stringify(treePayload)
+          });
+
+          if (!treeRes.ok) {
+            var treeErr = await treeRes.json();
+            throw new Error('Failed to create Git tree: ' + (treeErr.message || treeRes.statusText));
+          }
+          var treeData = await treeRes.json();
+
+          // 5. Create Git Commit
+          var commitPayload = {
+            message: msg,
+            tree: treeData.sha,
+            parents: latestCommitSha ? [latestCommitSha] : []
+          };
+
+          var commitRes = await fetch('https://api.github.com/repos/' + encodeURIComponent(account) + '/' + encodeURIComponent(remoteName) + '/git/commits', {
+            method: 'POST',
+            headers: headers,
+            body: JSON.stringify(commitPayload)
+          });
+
+          if (!commitRes.ok) {
+            var commitErr = await commitRes.json();
+            throw new Error('Failed to create Git commit: ' + (commitErr.message || commitRes.statusText));
+          }
+          var newCommitData = await commitRes.json();
+
+          // 6. Update or create branch reference
+          if (latestCommitSha) {
+            await fetch('https://api.github.com/repos/' + encodeURIComponent(account) + '/' + encodeURIComponent(remoteName) + '/git/refs/heads/main', {
+              method: 'PATCH',
+              headers: headers,
+              body: JSON.stringify({ sha: newCommitData.sha, force: true })
+            });
+          } else {
+            await fetch('https://api.github.com/repos/' + encodeURIComponent(account) + '/' + encodeURIComponent(remoteName) + '/git/refs', {
+              method: 'POST',
+              headers: headers,
+              body: JSON.stringify({ ref: 'refs/heads/main', sha: newCommitData.sha })
+            });
+          }
+
+          // 7. Trigger GitHub Pages enablement
+          try {
+            await LunoDeployEngine.enableGitHubPages(remoteName);
+          } catch(e) {}
+
+          // 8. Update local checkpoint state
+          try {
+            var postMetaRes = await LunoApiClient.fetchFsRead('luno.json', pName);
+            if (postMetaRes && postMetaRes.content) {
+              var pMeta = JSON.parse(postMetaRes.content);
+              pMeta.processedCountSinceCheckpoint = 0;
+              pMeta.lastCheckpointTime = new Date().toISOString();
+              pMeta.pendingCheckpointDescription = 'Clean working tree';
+              var adapter2 = LunoFileSystem.getAdapter();
+              if (adapter2 && adapter2.write) {
+                await adapter2.write('luno.json', JSON.stringify(pMeta, null, 2) + '\n', pName);
+              }
+            }
+            if (typeof ClientApp !== 'undefined') {
+              ClientApp.uncommittedCount = 0;
+              await ClientApp.fetchCodebaseMetrics(pName);
+            }
+          } catch (e) {}
+
+          return {
+            success: true,
+            output: '✅ Pure Browser Deployment Complete!\nCreated 1 atomic commit (' + newCommitData.sha.slice(0, 7) + ') with ' + treeItems.length + ' file(s) on https://github.com/' + account + '/' + remoteName + '\n🌐 Live Site: https://' + account.toLowerCase() + '.github.io/' + remoteName + '/'
+          };
+        }
+
+        // Local Server Deploy Route
         if (deployToPages && token) {
           try {
             await LunoDeployEngine.createRemoteRepoOnGitHub(remoteName);
@@ -377,97 +606,6 @@ class LunoDeployEngine {
           await LunoDeployEngine.ensureGitHubPagesParity(pName);
         }
 
-        var isStatic = (typeof LunoFileSystem !== 'undefined' && typeof LunoFileSystem.isStaticHosting === 'function')
-          ? LunoFileSystem.isStaticHosting()
-          : (typeof LunoApiClient !== 'undefined' && LunoApiClient.isStaticMode());
-
-        if (isStatic) {
-          if (!token) {
-            return {
-              success: false,
-              error: 'A GitHub Personal Access Token (PAT) is required to deploy directly from browser-hosted Luno on GitHub Pages. Please enter your PAT above.'
-            };
-          }
-
-          var codeData = await LunoApiClient.fetchAllCode(pName, {
-            includeProjectLibrary: isLibraryProject,
-            includeAllLibrary: isLibraryProject
-          });
-
-          if (!codeData || !codeData.filesMap) {
-            return { success: false, error: 'Could not assemble project files from IndexedDB.' };
-          }
-
-          var headers = {
-            'Authorization': 'token ' + token,
-            'Accept': 'application/vnd.github.v3+json',
-            'Content-Type': 'application/json'
-          };
-
-          var committedCount = 0;
-          var filesMap = codeData.filesMap;
-
-          for (var rawPath in filesMap) {
-            if (!Object.prototype.hasOwnProperty.call(filesMap, rawPath)) continue;
-            var cleanPath = rawPath.replace(/\\/g, '/');
-            if (cleanPath.startsWith(pName + '/')) cleanPath = cleanPath.slice(pName.length + 1);
-
-            if (!isLibraryProject && cleanPath.startsWith('Library/')) continue;
-
-            var content = filesMap[rawPath] || '';
-            var b64Content = btoa(unescape(encodeURIComponent(content)));
-            var apiUrl = 'https://api.github.com/repos/' + encodeURIComponent(account) + '/' + encodeURIComponent(remoteName) + '/contents/' + cleanPath;
-
-            var sha = undefined;
-            try {
-              var checkRes = await fetch(apiUrl, { method: 'GET', headers: headers });
-              if (checkRes.ok) {
-                var checkData = await checkRes.json();
-                sha = checkData.sha;
-              }
-            } catch (e) {}
-
-            var putBody = {
-              message: msg + ' - ' + cleanPath,
-              content: b64Content,
-              branch: 'main'
-            };
-            if (sha) putBody.sha = sha;
-
-            var putRes = await fetch(apiUrl, {
-              method: 'PUT',
-              headers: headers,
-              body: JSON.stringify(putBody)
-            });
-
-            if (putRes.ok) {
-              committedCount++;
-            }
-          }
-
-          if (deployToPages) {
-            try {
-              var noJekyllUrl = 'https://api.github.com/repos/' + encodeURIComponent(account) + '/' + encodeURIComponent(remoteName) + '/contents/.nojekyll';
-              var njCheck = await fetch(noJekyllUrl, { method: 'GET', headers: headers });
-              var njSha = njCheck.ok ? (await njCheck.json()).sha : undefined;
-              await fetch(noJekyllUrl, {
-                method: 'PUT',
-                headers: headers,
-                body: JSON.stringify({ message: 'Ensure .nojekyll', content: '', branch: 'main', sha: njSha })
-              });
-            } catch(e) {}
-
-            try {
-              await LunoDeployEngine.enableGitHubPages(remoteName);
-            } catch(e) {}
-          }
-
-          return {
-            success: true,
-            output: '✅ Pure Browser Deployment Complete!\nCommitted ' + committedCount + ' file(s) directly to https://github.com/' + account + '/' + remoteName + ' via GitHub REST API.'
-          };
-        }
-
         var targetRemote = customRemoteUrl || ('git@github.com:' + account + '/' + remoteName + '.git');
         if (deployToPages) {
           await LunoDeployEngine.initializeGitRepo(pName, targetRemote);
@@ -475,7 +613,7 @@ class LunoDeployEngine {
 
         var res = await fetch('/api/deploy?project=' + encodeURIComponent(pName), {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', 'X-Luno-Client': '1' },
           body: JSON.stringify({ project: pName, commitMsg: msg, deployToPages: deployToPages })
         });
         var deployData = await res.json();
@@ -490,8 +628,7 @@ class LunoDeployEngine {
       } catch (e) {
         return { success: false, error: e.message };
       }
-    }
-
+  }
   static async mountUI(container) {
       if (!container) return;
       container.innerHTML = '';
@@ -809,6 +946,8 @@ class LunoDeployEngine {
 
       return await LunoDeployEngine.deployProjectToGitHub(pName, msg, null, { deployToPages: deployToPages });
     }
+
+  static GITHUB_ACCOUNT_KEY = 'luno_github_account';
 }
 
 globalThis.LunoDeployEngine = LunoDeployEngine;

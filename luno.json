@@ -48,14 +48,30 @@
     "Luno/docs/LunoMetricsAnalyzer.js",
     "Luno/app/LunoRuntimeStringifier.js",
     "Luno/docs/LunoDocs.js",
-    "Luno/app/LunoDeployEngine.js"
+    "Luno/app/LunoDeployEngine.js",
+    "Luno/app/LunoZipExporter.js"
   ],
-  "processedCountSinceCheckpoint": 3,
-  "lastCheckpointTime": "2026-09-19T05:25:52.853Z",
+  "processedCountSinceCheckpoint": 37,
+  "lastCheckpointTime": "2026-09-19T05:38:57.574Z",
   "pendingCheckpointDescription": "Clean working tree",
   "changedMethods": {
-    "app/LunoFileSystem.js": "2026-09-19T05:32:41.236Z",
-    "app/LunoDeployEngine.js": "2026-09-19T05:32:41.236Z",
-    "core/LunoServer.js": "2026-09-19T05:38:49.195Z"
+    "app/LunoFileSystem.js": "2026-09-19T23:19:07.387Z",
+    "app/LunoDeployEngine.js": "2026-09-19T23:23:59.581Z",
+    "core/LunoServer.js": "2026-09-19T23:22:04.425Z",
+    "server.js": "2026-09-19T23:16:49.343Z",
+    "app/LunoSpaDock.js": "2026-09-19T23:23:06.157Z",
+    "app/LunoApiClient.js": "2026-09-19T23:21:26.029Z",
+    "app/LunoProjectTemplates.js": "2026-09-19T23:23:06.157Z",
+    "app/InboxActionTimer.js": "2026-09-19T23:19:07.387Z",
+    "app/LunoZipExporter.js": "2026-09-19T23:23:06.157Z",
+    "docs/LunoMetricsAnalyzer.js": "2026-09-19T23:20:34.301Z",
+    "app/ClientAppPaster.js": "2026-09-19T23:22:04.425Z",
+    "app/LunoPrototypeMigrator.js": "2026-09-19T23:20:34.301Z",
+    "luno.json": "2026-09-19T23:21:26.029Z",
+    "app/ClientAppUI.js": "2026-09-19T23:21:26.029Z",
+    "app/LunoRunner.js": "2026-09-19T23:22:04.425Z",
+    "launcher.js": "2026-09-19T23:22:04.425Z",
+    "app/LunoCheckpointView.js": "2026-09-19T23:23:59.581Z",
+    "Library/LunoLoader.js": "2026-09-19T23:23:59.581Z"
   }
 }
