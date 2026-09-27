@@ -254,6 +254,15 @@ static getRootDir() {
 
       const targetDir = baseDir || LunoServer.getRootDir();
 
+      // 0. Explicit resolution for Luno/ prefix
+      if (normalized.startsWith('Luno/')) {
+        const afterLuno = normalized.slice(5);
+        const lunoInWebRoot = path.join(webRoot, 'Luno', afterLuno);
+        if (fs.existsSync(lunoInWebRoot)) return lunoInWebRoot;
+        const lunoInTarget = path.join(targetDir, afterLuno);
+        if (fs.existsSync(lunoInTarget)) return lunoInTarget;
+      }
+
       // 1. Direct resolution for core/app files
       if (
         normalized.startsWith('app/') ||
@@ -267,7 +276,6 @@ static getRootDir() {
         const webLunoPath = path.join(webRoot, 'Luno', normalized);
         if (fs.existsSync(webLunoPath)) return webLunoPath;
 
-        // Resilient fallback across sibling directories if path folder was misplaced
         const fileName = path.basename(normalized);
         const searchFolders = ['app', 'core', 'browser', 'docs', 'test'];
         for (const fld of searchFolders) {

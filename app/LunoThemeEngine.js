@@ -365,7 +365,22 @@ class LunoThemeEngine {
         if (!body) return;
         if (document.getElementById('luno-dictation-toggle-row')) return;
 
-        const isDictation = (typeof LunoSettings !== 'undefined' && LunoSettings.dictationEnabled) ? LunoSettings.dictationEnabled() : false;
+        const getSettings = () => {
+          if (typeof LunoSettings !== 'undefined') return LunoSettings;
+          if (typeof globalThis !== 'undefined' && globalThis.LunoSettings) return globalThis.LunoSettings;
+          if (typeof window !== 'undefined' && window.LunoSettings) return window.LunoSettings;
+          return null;
+        };
+
+        const settingsObj = getSettings();
+        let isDictation = false;
+        try {
+          if (settingsObj && typeof settingsObj.dictationEnabled === 'function') {
+            isDictation = settingsObj.dictationEnabled();
+          } else if (typeof localStorage !== 'undefined') {
+            isDictation = localStorage.getItem('luno_dictation_enabled') === 'true';
+          }
+        } catch (e) {}
 
         const dictRow = document.createElement('div');
         dictRow.id = 'luno-dictation-toggle-row';
@@ -376,8 +391,25 @@ class LunoThemeEngine {
         btnToggle.style.cssText = 'padding:0.3rem 0.65rem; background:' + (isDictation ? '#238636' : '#21262d') + '; color:' + (isDictation ? '#fff' : '#8b949e') + '; border:1px solid ' + (isDictation ? '#3fb950' : '#30363d') + '; border-radius:6px; cursor:pointer; font-family:monospace; font-weight:bold; font-size:0.72rem;';
         btnToggle.textContent = isDictation ? 'Enabled ✓' : 'Disabled ✗';
         btnToggle.onclick = () => {
-          const next = !LunoSettings.dictationEnabled();
-          LunoSettings.setDictationEnabled(next);
+          const s = getSettings();
+          let next = false;
+          try {
+            if (s && typeof s.dictationEnabled === 'function') {
+              next = !s.dictationEnabled();
+              s.setDictationEnabled(next);
+            } else if (typeof localStorage !== 'undefined') {
+              const cur = localStorage.getItem('luno_dictation_enabled') === 'true';
+              next = !cur;
+              localStorage.setItem('luno_dictation_enabled', String(next));
+            }
+          } catch (e) {
+            if (typeof localStorage !== 'undefined') {
+              const cur = localStorage.getItem('luno_dictation_enabled') === 'true';
+              next = !cur;
+              localStorage.setItem('luno_dictation_enabled', String(next));
+            }
+          }
+
           btnToggle.textContent = next ? 'Enabled ✓' : 'Disabled ✗';
           btnToggle.style.background = next ? '#238636' : '#21262d';
           btnToggle.style.color = next ? '#fff' : '#8b949e';

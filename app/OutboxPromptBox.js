@@ -59,6 +59,12 @@ class OutboxPromptBox {
 
   static promptWriteNoteModal(initialText, editingItemId, originElement) {
       if (typeof document === 'undefined') return;
+
+      // Ensure DOM helper primitives (makeElement, applyCss) are initialized
+      if (typeof DomBasics !== 'undefined' && DomBasics.run) {
+        DomBasics.run();
+      }
+
       var existing = document.getElementById('luno-floating-prompt-box');
       var savedDraft = (typeof localStorage !== 'undefined' && localStorage.getItem('luno_prompt_draft_text')) || '';
       var textToLoad = initialText || savedDraft;
@@ -67,30 +73,23 @@ class OutboxPromptBox {
       var originRect = originBtn ? originBtn.getBoundingClientRect() : null;
 
       if (existing) {
-        existing.style.display = 'flex';
-        var input = document.getElementById('floating-prompt-input');
-        if (input && textToLoad) input.value = textToLoad;
-        existing.dataset.editingItemId = editingItemId || '';
-        var btnAdd = existing.querySelector('#btn-add-prompt-outbox');
-        if (btnAdd) btnAdd.textContent = editingItemId ? 'Save Changes to Outbox' : 'Add to Outbox';
-
-        if (typeof LunoAnimationEngine !== 'undefined') {
-          LunoAnimationEngine.animateDialogIn(existing, originRect);
+        if (existing._dictateWidget && typeof existing._dictateWidget.destroy === 'function') {
+          try { existing._dictateWidget.destroy(); } catch (e) {}
         }
-        setTimeout(function() { if (input) input.focus(); }, 120);
-        return;
+        existing.remove();
+        existing = null;
       }
 
-      var savedGeo = { top: 90, left: Math.max(10, (window.innerWidth - 350) / 2), width: 340, height: 280 };
+      var savedGeo = { top: 80, left: Math.max(10, (window.innerWidth - 500) / 2), width: 500, height: 380 };
       try {
         var raw = localStorage.getItem('luno_prompt_box_geo');
         if (raw) savedGeo = Object.assign(savedGeo, JSON.parse(raw));
       } catch(e){}
 
-      var boxH = savedGeo.height || 280;
-      var boxW = savedGeo.width || 340;
-      var boxT = savedGeo.top !== undefined ? savedGeo.top : 90;
-      var boxL = savedGeo.left !== undefined ? savedGeo.left : 20;
+      var boxH = Math.max(260, savedGeo.height || 380);
+      var boxW = Math.max(340, savedGeo.width || 500);
+      var boxT = savedGeo.top !== undefined ? savedGeo.top : 80;
+      var boxL = savedGeo.left !== undefined ? savedGeo.left : Math.max(10, (window.innerWidth - boxW) / 2);
 
       var card = document.createElement('div');
       card.id = 'luno-floating-prompt-box';
@@ -101,9 +100,9 @@ class OutboxPromptBox {
         'left: ' + boxL + 'px;',
         'width: ' + boxW + 'px;',
         'height: ' + boxH + 'px;',
-        'min-width: 240px;',
-        'min-height: 110px;',
-        'background: rgba(22, 27, 34, 0.96);',
+        'min-width: 320px;',
+        'min-height: 240px;',
+        'background: rgba(22, 27, 34, 0.98);',
         'color: #c9d1d9;',
         'border: 2px solid #8257e5;',
         'border-radius: 12px;',
@@ -133,84 +132,62 @@ class OutboxPromptBox {
       body.id = 'floating-prompt-body';
       body.style.cssText = 'padding:0.6rem; display:flex; flex-direction:column; gap:0.5rem; flex:1; overflow:hidden; box-sizing:border-box; position:relative;';
 
-      var input = document.createElement('textarea');
-      input.id = 'floating-prompt-input';
-      input.placeholder = 'Type instructions or prompt note for LLM...';
-      input.value = textToLoad;
-      input.style.cssText = 'width:100%; flex:1; background:#0d1117; color:#7ee787; border:1px solid #8257e5; border-radius:8px; padding:0.55rem; font-family:monospace; font-size:0.82rem; outline:none; box-sizing:border-box; resize:none; font-weight:600; min-height:40px; box-shadow:inset 0 2px 6px rgba(0,0,0,0.5);';
+      var DictationClass = typeof DictationWidget !== 'undefined'
+        ? DictationWidget
+        : (typeof globalThis !== 'undefined' ? globalThis.DictationWidget : (typeof window !== 'undefined' ? window.DictationWidget : null));
 
-      input.oninput = function() {
-        try { localStorage.setItem('luno_prompt_draft_text', input.value); } catch(e){}
-      };
+      var dictateWidget = null;
+      var fallbackInput = null;
+
+      if (DictationClass) {
+        try {
+          dictateWidget = new DictationClass();
+          dictateWidget.init();
+
+          // Style the widget host container to fit cleanly inside our modal
+          if (dictateWidget.element) {
+            dictateWidget.element.style.flex = '1';
+            dictateWidget.element.style.minHeight = '140px';
+            dictateWidget.element.style.borderRadius = '8px';
+            dictateWidget.element.style.overflow = 'hidden';
+            dictateWidget.element.style.border = '1px solid #8257e5';
+          }
+
+          // Hide redundant copy/send buttons inside the widget as our modal has its own Outbox button
+          if (dictateWidget.copyButton) dictateWidget.copyButton.style.display = 'none';
+          if (dictateWidget.magicSendBtn) dictateWidget.magicSendBtn.style.display = 'none';
+
+          if (textToLoad && dictateWidget.editorContent) {
+            dictateWidget.editorContent.textContent = textToLoad;
+          }
+
+          dictateWidget.subscribe(function(text) {
+            try { localStorage.setItem('luno_prompt_draft_text', text); } catch(e){}
+          });
+
+          body.appendChild(dictateWidget.getElement());
+          card._dictateWidget = dictateWidget;
+        } catch (e) {
+          console.warn('[OutboxPromptBox] Could not initialize DictationWidget, falling back to textarea:', e);
+          dictateWidget = null;
+        }
+      }
+
+      if (!dictateWidget) {
+        fallbackInput = document.createElement('textarea');
+        fallbackInput.id = 'floating-prompt-input';
+        fallbackInput.placeholder = 'Type instructions or prompt note for LLM...';
+        fallbackInput.value = textToLoad;
+        fallbackInput.style.cssText = 'width:100%; flex:1; background:#0d1117; color:#7ee787; border:1px solid #8257e5; border-radius:8px; padding:0.55rem; font-family:monospace; font-size:0.82rem; outline:none; box-sizing:border-box; resize:none; font-weight:600; min-height:80px; box-shadow:inset 0 2px 6px rgba(0,0,0,0.5);';
+
+        fallbackInput.oninput = function() {
+          try { localStorage.setItem('luno_prompt_draft_text', fallbackInput.value); } catch(e){}
+        };
+        body.appendChild(fallbackInput);
+      }
 
       var btnRow = document.createElement('div');
       btnRow.style.cssText = 'display:flex; gap:0.4rem; flex-shrink:0; align-items:center;';
-
-      // Optional Dictation Mic Button (active when preference is enabled)
-      var isDictation = (typeof LunoSettings !== 'undefined' && LunoSettings.dictationEnabled) ? LunoSettings.dictationEnabled() : false;
-      var btnMic = null;
-
-      if (isDictation && typeof window !== 'undefined' && ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window)) {
-        btnMic = document.createElement('button');
-        btnMic.id = 'btn-prompt-dictate';
-        btnMic.style.cssText = 'padding:0.5rem 0.65rem; background:#161b22; color:#00f2fe; border:1px solid #00f2fe; border-radius:6px; cursor:pointer; font-size:0.85rem; font-family:monospace; font-weight:bold;';
-        btnMic.innerHTML = '🎙️';
-        btnMic.title = 'Start Voice Dictation (speech-to-text)';
-
-        let recognition = null;
-        let isRecording = false;
-
-        btnMic.onclick = function() {
-          if (!isRecording) {
-            const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
-            recognition = new SpeechRec();
-            recognition.continuous = true;
-            recognition.interimResults = true;
-
-            recognition.onstart = function() {
-              isRecording = true;
-              btnMic.style.background = '#2c080a';
-              btnMic.style.borderColor = '#f85149';
-              btnMic.style.color = '#ff7b72';
-              btnMic.innerHTML = '🔴';
-            };
-
-            recognition.onresult = function(event) {
-              let finalTranscript = '';
-              for (let i = event.resultIndex; i < event.results.length; ++i) {
-                if (event.results[i].isFinal) {
-                  finalTranscript += event.results[i][0].transcript;
-                }
-              }
-              if (finalTranscript) {
-                const current = input.value;
-                input.value = current + (current && !current.endsWith(' ') ? ' ' : '') + finalTranscript;
-                input.dispatchEvent(new Event('input'));
-              }
-            };
-
-            recognition.onerror = function() {
-              isRecording = false;
-              btnMic.style.background = '#161b22';
-              btnMic.style.borderColor = '#00f2fe';
-              btnMic.style.color = '#00f2fe';
-              btnMic.innerHTML = '🎙️';
-            };
-
-            recognition.onend = function() {
-              isRecording = false;
-              btnMic.style.background = '#161b22';
-              btnMic.style.borderColor = '#00f2fe';
-              btnMic.style.color = '#00f2fe';
-              btnMic.innerHTML = '🎙️';
-            };
-
-            recognition.start();
-          } else if (recognition) {
-            recognition.stop();
-          }
-        };
-      }
 
       var btnAdd = document.createElement('button');
       btnAdd.id = 'btn-add-prompt-outbox';
@@ -218,7 +195,13 @@ class OutboxPromptBox {
       btnAdd.innerHTML = '<span>📤</span><span>' + (editingItemId ? 'Save to Outbox' : 'Add to Outbox') + '</span>';
 
       btnAdd.onclick = function() {
-        var val = input.value.trim();
+        var val = '';
+        if (dictateWidget) {
+          val = (dictateWidget.getText ? dictateWidget.getText() : (dictateWidget.editorContent ? dictateWidget.editorContent.textContent : '')).trim();
+        } else if (fallbackInput) {
+          val = fallbackInput.value.trim();
+        }
+
         var activeEditId = card.dataset.editingItemId;
         if (val) {
           var title = 'Prompt Note: ' + val.slice(0, 22);
@@ -240,9 +223,13 @@ class OutboxPromptBox {
               } else if (typeof OutboxQueue !== 'undefined' && OutboxQueue.addBundle) {
                 OutboxQueue.addBundle(title, payload);
               }
-              input.value = '';
+              if (dictateWidget) {
+                dictateWidget.clearContent();
+                dictateWidget.destroy();
+              }
               card.dataset.editingItemId = '';
               try { localStorage.removeItem('luno_prompt_draft_text'); } catch(e){}
+              card.remove();
             });
           }
         }
@@ -252,28 +239,34 @@ class OutboxPromptBox {
       btnHide.style.cssText = 'flex:1; padding:0.55rem; background:#21262d; color:#c9d1d9; border:1px solid #30363d; border-radius:6px; cursor:pointer; font-size:0.75rem; font-family:monospace;';
       btnHide.textContent = 'Hide';
       btnHide.onclick = function() {
+        if (dictateWidget) {
+          dictateWidget.stopListening();
+          dictateWidget.destroy();
+        }
         if (typeof LunoAnimationEngine !== 'undefined') {
-          LunoAnimationEngine.animateDialogOut(card, originRect, null);
+          LunoAnimationEngine.animateDialogOut(card, originRect, function() { card.remove(); });
         } else {
-          card.style.display = 'none';
+          card.remove();
         }
       };
 
-      if (btnMic) btnRow.appendChild(btnMic);
       btnRow.appendChild(btnAdd);
       btnRow.appendChild(btnHide);
 
-      body.appendChild(input);
       body.appendChild(btnRow);
       card.appendChild(titleBar);
       card.appendChild(body);
       document.body.appendChild(card);
 
       document.getElementById('btn-close-floating-prompt').onclick = function() {
+        if (dictateWidget) {
+          dictateWidget.stopListening();
+          dictateWidget.destroy();
+        }
         if (typeof LunoAnimationEngine !== 'undefined') {
-          LunoAnimationEngine.animateDialogOut(card, originRect, null);
+          LunoAnimationEngine.animateDialogOut(card, originRect, function() { card.remove(); });
         } else {
-          card.style.display = 'none';
+          card.remove();
         }
       };
 
@@ -281,7 +274,14 @@ class OutboxPromptBox {
       if (typeof LunoAnimationEngine !== 'undefined') {
         LunoAnimationEngine.animateDialogIn(card, originRect);
       }
-      setTimeout(function() { if (input) input.focus(); }, 120);
+
+      setTimeout(function() {
+        if (dictateWidget && dictateWidget.editorContent) {
+          dictateWidget.editorContent.focus();
+        } else if (fallbackInput) {
+          fallbackInput.focus();
+        }
+      }, 120);
     }
 }
 
