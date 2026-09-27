@@ -45,6 +45,7 @@ class LunoApiClient {
         return { status: 'offline', mode: 'indexedDb-static', rootDir: 'Project Root', version: 'v3.8.0' };
       }
   }
+
   static async fetchProjectsList() {
       if (LunoApiClient.isStaticMode()) {
         const adapter = LunoFileSystem.getAdapter();
@@ -69,12 +70,13 @@ class LunoApiClient {
           { name: 'Calculator', version: '1.0.0', description: 'Modular arithmetic and fractions calculator' },
           { name: 'accuCad', version: '1.0.0', description: 'Computer-aided drafting constraint system' },
           { name: 'situation', version: '1.0.0', description: 'Executive career dossier and valuation portfolio' },
-          { name: 'AardvarkPlaylist', version: '1.0.0', description: 'YouTube playlist manager and falling-note visualizer' },
+          { name: 'AardvarkPlaylist', version: '1.0.0', description: 'YouTube playlist manager and visualizer' },
           { name: 'SvgStudio', version: '1.0.0', description: 'Visual vector design tool' },
           { name: 'Es6Converter', version: '1.0.0', description: 'ES6 class migration workbench' },
-          { name: 'LunoTests', version: '1.0.0', description: 'Automated test suite' },
-          { name: 'BookmarkletWorkshop', version: '1.0.0', description: 'Google AI Studio bookmarklet generator' },
-          { name: 'Luno', version: '3.8.0', description: 'Luno Workspace core' },
+          { name: 'LunoTests', version: '1.0.0', description: 'AST & protocol diagnostic test suite' },
+          { name: 'BookmarkletWorkshop', version: '1.0.0', description: 'AI Studio relay bookmarklet generator' },
+          { name: 'vibes', version: '3.8.0', description: 'Vibes desktop IDE and AST development environment' },
+          { name: 'Luno', version: '3.8.0', description: 'Luno Workspace cockpit core' },
           { name: 'Library', isLibrary: true, version: '1.0.0', description: 'Central shared dependencies hub' }
         ];
 
@@ -94,9 +96,9 @@ class LunoApiClient {
       } catch(e) {
         const adapter = (typeof LunoFileSystem !== 'undefined') ? LunoFileSystem.getAdapter() : null;
         if (adapter && adapter.listProjects) return await adapter.listProjects();
-        return { success: true, projects: [{ name: 'Luno' }, { name: 'Library' }] };
+        return { success: true, projects: [{ name: 'Luno' }, { name: 'vibes' }, { name: 'Library' }] };
       }
-  }
+    }
   static async fetchFsListRecursive(targetPath = '', project = '') {
     const cleanTarget = LunoApiClient.cleanPath(targetPath);
     if (LunoApiClient.isStaticMode()) {
@@ -116,48 +118,64 @@ class LunoApiClient {
   }
 
   static async fetchFsRead(filePath = '', project = '') {
-      const cleanFile = LunoApiClient.cleanPath(filePath);
-      if (LunoApiClient.isStaticMode()) {
-        const adapter = LunoFileSystem.getAdapter();
-        if (adapter && adapter.read) {
-          const r = await adapter.read(cleanFile, project);
-          if (r.success) return r;
-        }
-        try {
-          const fetchUrl = (typeof LunoFileSystem !== 'undefined' && LunoFileSystem.resolveStaticUrl)
-            ? LunoFileSystem.resolveStaticUrl(cleanFile, project)
-            : ('./' + cleanFile);
+    const cleanFile = LunoApiClient.cleanPath(filePath);
+    let effectiveProject = project;
 
-          let res = await fetch(fetchUrl);
-          const isLib = cleanFile.startsWith('Library/') || cleanFile.startsWith('library/') || project === 'Library';
+    // If path starts with an explicit sibling project prefix, infer the project from the path
+    const firstSegment = cleanFile.split('/')[0];
+    const knownSiblings = [
+      'vibes', 'aardvarkBookmarklet', 'AardvarkExtension', 'AardvarkPlaylist', 'AlphabetGame',
+      'Basic3D', 'BasicsWithDialogBox', 'BookmarkletWorkshop', 'BulbAndButton', 'Calculator',
+      'Es6Converter', 'LegoDetective', 'LunoTests', 'MathStorm', 'Penrose', 'PleasureAndPain',
+      'RobotDividend', 'SvgStudio', 'TriBlob', 'ValuationOfAccudraw', 'accuCad', 'accudraw',
+      'guessTheNoteGame', 'situation', 'squircle', 'Squircle', 'teacup', 'Library'
+    ];
 
-          // Resilient fallback for library files on GitHub Pages
-          if (!res.ok && isLib) {
-            const cleanLib = cleanFile.replace(/^(?:Library|library)\//, '');
-            const fallbackUrl = 'https://karmatics.github.io/Library/' + cleanLib;
-            if (fetchUrl !== fallbackUrl) {
-              res = await fetch(fallbackUrl);
-            }
-          }
-
-          if (res.ok) {
-            const content = await res.text();
-            const trimmed = content.trim();
-            const isHtmlFile = cleanFile.toLowerCase().endsWith('.html') || cleanFile.toLowerCase().endsWith('.htm');
-            if (!isHtmlFile && (trimmed.startsWith('<!DOCTYPE') || trimmed.startsWith('<html'))) {
-              return { success: false, error: 'File not found: ' + cleanFile };
-            }
-            if (adapter && adapter.write) {
-              await adapter.write(cleanFile, content, project);
-            }
-            return { success: true, content, size: content.length };
-          }
-        } catch(fetchErr) {}
-        return { success: false, error: 'File not found in storage: ' + cleanFile };
-      }
-      const pParam = project ? ('&project=' + encodeURIComponent(project)) : '';
-      return await LunoApiClient.safeJsonFetch('/api/fs/read?path=' + encodeURIComponent(cleanFile) + pParam);
+    if (knownSiblings.includes(firstSegment)) {
+      effectiveProject = firstSegment;
     }
+
+    if (LunoApiClient.isStaticMode()) {
+      const adapter = LunoFileSystem.getAdapter();
+      if (adapter && adapter.read) {
+        const r = await adapter.read(cleanFile, effectiveProject);
+        if (r.success) return r;
+      }
+      try {
+        const fetchUrl = (typeof LunoFileSystem !== 'undefined' && LunoFileSystem.resolveStaticUrl)
+          ? LunoFileSystem.resolveStaticUrl(cleanFile, effectiveProject)
+          : ('./' + cleanFile);
+
+        let res = await fetch(fetchUrl);
+        const isLib = cleanFile.startsWith('Library/') || cleanFile.startsWith('library/') || effectiveProject === 'Library';
+
+        if (!res.ok && isLib) {
+          const cleanLib = cleanFile.replace(/^(?:Library|library)\//, '');
+          const fallbackUrl = 'https://karmatics.github.io/Library/' + cleanLib;
+          if (fetchUrl !== fallbackUrl) {
+            res = await fetch(fallbackUrl);
+          }
+        }
+
+        if (res.ok) {
+          const content = await res.text();
+          const trimmed = content.trim();
+          const isHtmlFile = cleanFile.toLowerCase().endsWith('.html') || cleanFile.toLowerCase().endsWith('.htm');
+          if (!isHtmlFile && (trimmed.startsWith('<!DOCTYPE') || trimmed.startsWith('<html'))) {
+            return { success: false, error: 'File not found: ' + cleanFile };
+          }
+          if (adapter && adapter.write) {
+            await adapter.write(cleanFile, content, effectiveProject);
+          }
+          return { success: true, content, size: content.length };
+        }
+      } catch(fetchErr) {}
+      return { success: false, error: 'File not found in storage: ' + cleanFile };
+    }
+
+    const pParam = effectiveProject ? ('&project=' + encodeURIComponent(effectiveProject)) : '';
+    return await LunoApiClient.safeJsonFetch('/api/fs/read?path=' + encodeURIComponent(cleanFile) + pParam);
+  }
   static async fetchAllCode(project = '', options = {}) {
     const proj = project || (typeof ClientApp !== 'undefined' && ClientApp.getTargetProject ? ClientApp.getTargetProject() : 'Luno');
     const opts = (typeof options === 'boolean') ? { includeAllLibrary: options } : (options || {});

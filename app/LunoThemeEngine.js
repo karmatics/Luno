@@ -354,16 +354,46 @@ class LunoThemeEngine {
     LunoThemeEngine.applyDynamicTheme();
 
   }
-  /**
-   * ⚙️ METHOD: createSettingsModal()
-   * - Type: Static Method
-   * - Modifier: sync
-   */
+
   static createSettingsModal() {
+      // Open floating color controls
+      LunoThemeEngine.openFloatingWidget();
 
-    LunoThemeEngine.openFloatingWidget();
+      // Inject dictation preference toggle if not already present in the floating window
+      setTimeout(() => {
+        const body = document.getElementById('luno-floating-theme-box');
+        if (!body) return;
+        if (document.getElementById('luno-dictation-toggle-row')) return;
 
-  }
+        const isDictation = (typeof LunoSettings !== 'undefined' && LunoSettings.dictationEnabled) ? LunoSettings.dictationEnabled() : false;
+
+        const dictRow = document.createElement('div');
+        dictRow.id = 'luno-dictation-toggle-row';
+        dictRow.style.cssText = 'display:flex; justify-content:space-between; align-items:center; background:#0d1117; padding:0.5rem; border-radius:6px; border:1px solid #30363d; margin-top:0.35rem;';
+        dictRow.innerHTML = '<span style="font-size:0.75rem; font-weight:bold; color:#f0f6fc;">🎙️ Voice Dictation Widget:</span>';
+
+        const btnToggle = document.createElement('button');
+        btnToggle.style.cssText = 'padding:0.3rem 0.65rem; background:' + (isDictation ? '#238636' : '#21262d') + '; color:' + (isDictation ? '#fff' : '#8b949e') + '; border:1px solid ' + (isDictation ? '#3fb950' : '#30363d') + '; border-radius:6px; cursor:pointer; font-family:monospace; font-weight:bold; font-size:0.72rem;';
+        btnToggle.textContent = isDictation ? 'Enabled ✓' : 'Disabled ✗';
+        btnToggle.onclick = () => {
+          const next = !LunoSettings.dictationEnabled();
+          LunoSettings.setDictationEnabled(next);
+          btnToggle.textContent = next ? 'Enabled ✓' : 'Disabled ✗';
+          btnToggle.style.background = next ? '#238636' : '#21262d';
+          btnToggle.style.color = next ? '#fff' : '#8b949e';
+          btnToggle.style.borderColor = next ? '#3fb950' : '#30363d';
+          if (typeof ClientApp !== 'undefined' && ClientApp.showToast) {
+            ClientApp.showToast(next ? 'Voice Dictation enabled in prompt writer!' : 'Voice Dictation disabled.', 'info', '🎙️');
+          }
+        };
+
+        dictRow.appendChild(btnToggle);
+        const innerBody = body.querySelector('#luno-floating-theme-box > div:nth-child(2)');
+        if (innerBody) {
+          innerBody.appendChild(dictRow);
+        }
+      }, 100);
+    }
 }
 
 globalThis.LunoThemeEngine = LunoThemeEngine;

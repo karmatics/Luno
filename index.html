@@ -18,49 +18,18 @@
       min-height: 100vh;
       width: 100%;
     }
-    #boot-status {
-      padding: 1.5rem;
-      background: #161b22;
-      border: 2px solid #00f2fe;
-      border-radius: 10px;
-      margin: 1.5rem auto;
-      max-width: 600px;
-      color: #c9d1d9;
-      box-shadow: 0 4px 16px rgba(0, 242, 254, 0.25);
-    }
   </style>
+
+  <!-- Preload Acorn AST parser directly via local vendor with CDN fallback -->
+  <script src="/Luno/vendor/acorn.js" onerror="this.onerror=null; this.src='https://cdn.jsdelivr.net/npm/acorn@8.11.3/dist/acorn.min.js';"></script>
   <script src="./app/acorn.js"></script>
-  <!-- Resilient Multi-Tier Loader: Local -> User Fork -> Karmatics Fallback -->
+
+  <!-- Single entry loader: reads dependencies dynamically from luno.json -->
   <script src="/Library/LunoLoader.js" onerror="this.onerror=null; (function(el){ var u=(window.location.hostname.endsWith('.github.io')?window.location.hostname.split('.')[0]:'karmatics'); el.src='https://'+u+'.github.io/Library/LunoLoader.js'; el.onerror=function(){ el.onerror=null; el.src='https://karmatics.github.io/Library/LunoLoader.js'; }; })(this);"></script>
 </head>
 <body>
-  <div id="app-root">
-    <div id="boot-status">
-      <div style="text-align:center; margin-bottom:0.75rem;"><img src="./assets/lunologo.png" alt="Luno" style="height:36px; vertical-align:middle;"></div>
-      <h3 style="color:#00f2fe; margin-top:0; text-align:center;">Initializing Luno Workspace...</h3>
-      <p style="font-size:12px; color:#8b949e;">Loading scripts from luno.json...</p>
-    </div>
-  </div>
+  <div id="app-root"></div>
   <script>
-    window.addEventListener('error', function(e) {
-      var root = document.getElementById('app-root');
-      if (root) {
-        var errBox = document.getElementById('luno-permanent-boot-error');
-        if (!errBox) {
-          errBox = document.createElement('div');
-          errBox.id = 'luno-permanent-boot-error';
-          errBox.style.cssText = 'position:fixed; top:10px; left:10px; right:10px; z-index:999999; padding:1.25rem; background:#2c080a; color:#ff7b72; border:2px solid #f85149; border-radius:8px; font-family:monospace; box-shadow:0 8px 32px rgba(0,0,0,0.9);';
-          document.body.appendChild(errBox);
-        }
-        errBox.innerHTML = '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.5rem;">' +
-          '<strong style="font-size:1rem; color:#ff7b72;">❌ Browser Boot Exception</strong>' +
-          '<button onclick="this.parentNode.parentNode.remove()" style="background:#161b22; color:#c9d1d9; border:1px solid #30363d; border-radius:4px; padding:0.2rem 0.5rem; cursor:pointer;">✖ Close</button>' +
-          '</div>' +
-          '<p style="margin:0.2rem 0;"><strong>Error:</strong> ' + e.message + '</p>' +
-          '<p style="margin:0.2rem 0; font-size:0.8rem; color:#8b949e;"><strong>File:</strong> ' + (e.filename || 'unknown') + ' (Line ' + e.lineno + ')</p>';
-      }
-    });
-
     document.addEventListener("DOMContentLoaded", async function() {
       if (typeof LunoLoader !== "undefined") {
         await LunoLoader.loadApp("app-root");

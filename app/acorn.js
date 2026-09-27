@@ -11,7 +11,7 @@ LunoAcornLoader.ensureLoaded = async function() {
     return globalObj.acorn;
   }
 
-  // 1. Direct Node.js process require if available
+  // Node.js process fallback
   if (typeof require !== 'undefined') {
     try {
       var a = require('acorn');
@@ -23,32 +23,12 @@ LunoAcornLoader.ensureLoaded = async function() {
 
   if (typeof window === 'undefined' || typeof document === 'undefined') return null;
 
-  var isStatic = false;
-  try {
-    if (typeof LunoFileSystem !== 'undefined' && typeof LunoFileSystem.isStaticHosting === 'function') {
-      isStatic = LunoFileSystem.isStaticHosting();
-    } else if (typeof LunoLoader !== 'undefined' && typeof LunoLoader.isStaticHosting === 'function') {
-      isStatic = LunoLoader.isStaticHosting();
-    }
-  } catch (e) {}
-
-  var localSources = [
-    '/node_modules/acorn/dist/acorn.js',
-    './node_modules/acorn/dist/acorn.js',
+  var candidateUrls = [
+    '/Luno/vendor/acorn.js',
     '/vendor/acorn.js',
-    './vendor/acorn.js'
+    'https://cdn.jsdelivr.net/npm/acorn@8.11.3/dist/acorn.min.js',
+    'https://cdnjs.cloudflare.com/ajax/libs/acorn/8.11.3/acorn.min.js'
   ];
-
-  var cdnSources = [
-    'https://cdnjs.cloudflare.com/ajax/libs/acorn/8.11.3/acorn.min.js',
-    'https://unpkg.com/acorn@8.11.3/dist/acorn.js',
-    'https://cdn.jsdelivr.net/npm/acorn@8.11.3/dist/acorn.min.js'
-  ];
-
-  // Offline-first when on local development server; CDN-first when hosted on static GitHub Pages
-  var candidateUrls = isStatic
-    ? cdnSources.concat(localSources)
-    : localSources.concat(cdnSources);
 
   for (var i = 0; i < candidateUrls.length; i++) {
     var url = candidateUrls[i];
@@ -58,13 +38,12 @@ LunoAcornLoader.ensureLoaded = async function() {
         var loadedAcorn = window.acorn || globalThis.acorn;
         window.acorn = loadedAcorn;
         globalThis.acorn = loadedAcorn;
-        console.log('[Luno Acorn Engine] AST Parser online from: ' + url);
         return loadedAcorn;
       }
     } catch (err) {}
   }
 
-  console.warn('[Luno Acorn Engine] All Acorn script endpoints were unreachable.');
+  console.warn('[Luno Acorn Engine] All Acorn endpoints unreachable.');
   return null;
 };
 

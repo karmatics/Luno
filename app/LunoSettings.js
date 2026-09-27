@@ -77,6 +77,24 @@ class LunoSettings {
     const validMode = (mode === 'patchlog') ? 'patchlog' : 'direct';
     LunoSettings.setItem(LunoSettings.KEYS.patchApplyMode, validMode);
   }
+
+  static dictationEnabled() {
+      try {
+        if (typeof localStorage !== 'undefined') {
+          const val = localStorage.getItem('luno_dictation_enabled');
+          if (val !== null) return val === 'true';
+        }
+      } catch (e) {}
+      return false; // Default off (enabled as preference)
+    }
+
+  static setDictationEnabled(val) {
+      try {
+        if (typeof localStorage !== 'undefined') {
+          localStorage.setItem('luno_dictation_enabled', String(Boolean(val)));
+        }
+      } catch (e) {}
+    }
 }
 
 globalThis.LunoSettings = LunoSettings;
