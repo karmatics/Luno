@@ -52,30 +52,30 @@
     "Luno/app/LunoDeployEngine.js",
     "Luno/app/LunoZipExporter.js"
   ],
-  "processedCountSinceCheckpoint": 12,
-  "lastCheckpointTime": "2026-09-27T05:44:28.003Z",
+  "processedCountSinceCheckpoint": 6,
+  "lastCheckpointTime": "2026-09-27T06:08:51.954Z",
   "pendingCheckpointDescription": "Clean working tree",
   "changedMethods": {
     "app/LunoFileSystem.js": "2026-09-19T23:19:07.387Z",
-    "app/LunoDeployEngine.js": "2026-09-19T23:23:59.581Z",
+    "app/LunoDeployEngine.js": "2026-09-27T17:16:44.602Z",
     "core/LunoServer.js": "2026-09-27T01:12:00.567Z",
     "server.js": "2026-09-19T23:16:49.343Z",
     "app/LunoSpaDock.js": "2026-09-19T23:23:06.157Z",
-    "app/LunoApiClient.js": "2026-09-26T22:49:40.443Z",
+    "app/LunoApiClient.js": "2026-09-27T17:16:44.602Z",
     "app/LunoProjectTemplates.js": "2026-09-19T23:23:06.157Z",
     "app/InboxActionTimer.js": "2026-09-19T23:19:07.387Z",
     "app/LunoZipExporter.js": "2026-09-19T23:23:06.157Z",
     "docs/LunoMetricsAnalyzer.js": "2026-09-19T23:20:34.301Z",
     "app/ClientAppPaster.js": "2026-09-19T23:22:04.425Z",
     "app/LunoPrototypeMigrator.js": "2026-09-19T23:20:34.301Z",
-    "luno.json": "2026-09-19T23:21:26.029Z",
+    "luno.json": "2026-09-27T18:11:38.325Z",
     "app/ClientAppUI.js": "2026-09-27T06:03:38.231Z",
     "app/LunoRunner.js": "2026-09-19T23:22:04.425Z",
     "launcher.js": "2026-09-19T23:22:04.425Z",
     "app/LunoCheckpointView.js": "2026-09-19T23:23:59.581Z",
     "Library/LunoLoader.js": "2026-09-27T01:09:58.188Z",
     "vibes/docs/VibesProtocolCapsule.js": "2026-09-26T06:36:24.704Z",
-    "app/LunoManifestDecisionEngine.js": "2026-09-26T06:38:27.990Z",
+    "app/LunoManifestDecisionEngine.js": "2026-09-27T17:16:44.602Z",
     "vibes/docs/LunoIntegrationHandoffCapsule.js": "2026-09-26T06:44:17.382Z",
     "vibes/luno.json": "2026-09-26T21:33:13.983Z",
     "vibes/index.html": "2026-09-27T00:23:41.841Z",
@@ -112,11 +112,44 @@
     "app/LunoCssChunks.js": "2026-09-27T06:07:01.684Z",
     "app/ClientApp.js": "2026-09-27T05:59:11.185Z",
     "app/LunoSpaHeaderNav.js": "2026-09-27T06:03:38.231Z",
-    "app/OutboxWidgetRenderer.js": "2026-09-27T06:03:38.231Z"
+    "app/OutboxWidgetRenderer.js": "2026-09-27T06:03:38.231Z",
+    "app/OutboxOptionsModal.js": "2026-09-27T18:11:38.325Z",
+    "app/OutboxQueue.js": "2026-09-27T18:11:38.325Z"
   },
   "library": [
     "DomBasics.js",
     "GlowingTooltip.js",
     "DictationWidget.js"
-  ]
+  ],
+  "visibilitySets": {
+    "core": [
+      "app/ClientApp.js",
+      "app/ClientAppPaster.js",
+      "app/ClientAppUI.js",
+      "app/LunoManifestDecisionEngine.js",
+      "app/LunoPayloadParser.js",
+      "core/LunoClassPatcher.js"
+    ],
+    "ui-themes": [
+      "app/ClientAppUI.js",
+      "app/LunoThemeEngine.js",
+      "app/LunoCssChunks.js",
+      "app/LunoAnimationEngine.js"
+    ],
+    "storage-deploy": [
+      "app/LunoFileSystem.js",
+      "app/LunoApiClient.js",
+      "app/LunoDeployEngine.js",
+      "app/LunoProjectTemplates.js",
+      "app/LunoCheckpointView.js"
+    ],
+    "outbox-inbox": [
+      "app/OutboxQueue.js",
+      "app/OutboxWidgetRenderer.js",
+      "app/OutboxOptionsModal.js",
+      "app/OutboxPromptBox.js",
+      "app/LunoPromptInstructions.js",
+      "app/InboxActionTimer.js"
+    ]
+  }
 }

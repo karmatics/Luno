@@ -69,50 +69,53 @@ class LunoDeployEngine {
         }
       } catch(e) {}
   }
-  static getRepoMappings() {
-      var defaults = {
-        'Luno': 'Luno',
-        'LunoTests': 'LunoTests',
-        'SvgStudio': 'SvgStudio',
-        'Es6Converter': 'Es6Converter',
-        'BookmarkletWorkshop': 'BookmarkletWorkshop',
-        'AardvarkPlaylist': 'AardvarkPlaylist',
-        'aardvarkBookmarklet': 'aardvarkBookmarklet',
-        'Basic3D': 'Basic3D',
-        'VideoEditor': 'VideoEditor',
-        'guessTheNoteGame': 'guessTheNoteGame',
-        'VideoPrepper': 'VideoPrepper',
-        'BasicsWithDialogBox': 'BasicsWithDialogBox',
-        'SimpleTest': 'SimpleTest',
-        'MathStorm': 'MathStorm',
-        'AlphabetGame': 'AlphabetGame',
-        'RobotDividend': 'RobotDividend',
-        'Calculator': 'Calculator',
-        'LegoDetective': 'LegoDetective',
-        'Library': 'Library',
-        'images': 'images',
-        'MySituation': 'situation',
-        'situation': 'situation',
-        'accuCad': 'accuCad',
-        'accudraw': 'accudraw',
-        'ValuationOfAccudraw': 'ValuationOfAccudraw',
-        'teacup': 'teacup',
-        'TriBlob': 'TriBlob',
-        'squircle': 'squircle',
-        'Squircle': 'Squircle',
-        'PleasureAndPain': 'PleasureAndPain',
-        'BulbAndButton': 'BulbAndButton',
-        'Penrose': 'Penrose'
-      };
 
-      try {
-        if (typeof localStorage !== 'undefined') {
-          var raw = localStorage.getItem(LunoDeployEngine.REPO_MAP_KEY);
-          if (raw) return Object.assign(defaults, JSON.parse(raw));
-        }
-      } catch(e) {}
-      return defaults;
-  }
+  static getRepoMappings() {
+        var defaults = {
+          'Luno': 'Luno',
+          'LunoParser': 'LunoParser',
+          'LunoTests': 'LunoParser',
+          'SvgStudio': 'SvgStudio',
+          'Es6Converter': 'Es6Converter',
+          'BookmarkletWorkshop': 'BookmarkletWorkshop',
+          'AardvarkPlaylist': 'AardvarkPlaylist',
+          'aardvarkBookmarklet': 'aardvarkBookmarklet',
+          'Basic3D': 'Basic3D',
+          'VideoEditor': 'VideoEditor',
+          'guessTheNoteGame': 'guessTheNoteGame',
+          'VideoPrepper': 'VideoPrepper',
+          'BasicsWithDialogBox': 'BasicsWithDialogBox',
+          'SimpleTest': 'SimpleTest',
+          'MathStorm': 'MathStorm',
+          'AlphabetGame': 'AlphabetGame',
+          'RobotDividend': 'RobotDividend',
+          'Calculator': 'Calculator',
+          'LegoDetective': 'LegoDetective',
+          'Library': 'Library',
+          'images': 'images',
+          'MySituation': 'situation',
+          'situation': 'situation',
+          'accuCad': 'accuCad',
+          'accudraw': 'accudraw',
+          'ValuationOfAccudraw': 'ValuationOfAccudraw',
+          'teacup': 'teacup',
+          'TriBlob': 'TriBlob',
+          'squircle': 'squircle',
+          'Squircle': 'Squircle',
+          'PleasureAndPain': 'PleasureAndPain',
+          'BulbAndButton': 'BulbAndButton',
+          'Penrose': 'Penrose',
+          'vibes': 'vibes'
+        };
+
+        try {
+          if (typeof localStorage !== 'undefined') {
+            var raw = localStorage.getItem(LunoDeployEngine.REPO_MAP_KEY);
+            if (raw) return Object.assign(defaults, JSON.parse(raw));
+          }
+        } catch(e) {}
+        return defaults;
+    }
   static setRepoMapping(projectName, remoteRepoName) {
     if (!projectName) return;
     var mappings = LunoDeployEngine.getRepoMappings();

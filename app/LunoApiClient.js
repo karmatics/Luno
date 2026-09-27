@@ -47,58 +47,58 @@ class LunoApiClient {
   }
 
   static async fetchProjectsList() {
-      if (LunoApiClient.isStaticMode()) {
-        const adapter = LunoFileSystem.getAdapter();
-        let idbProjects = [];
-        if (adapter && adapter.listProjects) {
-          try {
-            const res = await adapter.listProjects();
-            idbProjects = (res && res.projects) || [];
-          } catch(e) {}
+        if (LunoApiClient.isStaticMode()) {
+          const adapter = LunoFileSystem.getAdapter();
+          let idbProjects = [];
+          if (adapter && adapter.listProjects) {
+            try {
+              const res = await adapter.listProjects();
+              idbProjects = (res && res.projects) || [];
+            } catch(e) {}
+          }
+
+          // Catalog of known Karmatics sibling applications deployed on GitHub Pages
+          const catalog = [
+            { name: 'Basic3D', version: '1.0.0', description: 'Three.js 3D viewport starter' },
+            { name: 'BasicsWithDialogBox', version: '1.0.0', description: 'Windowing and resizable dialogs' },
+            { name: 'TriBlob', version: '1.0.0', description: '3D simulation with glossy HDR reflections' },
+            { name: 'teacup', version: '1.0.0', description: 'Utah teacup 3D rendering' },
+            { name: 'LegoDetective', version: '1.0.0', description: '3D LEGO brick rendering and detective game' },
+            { name: 'AlphabetGame', version: '1.0.0', description: 'Children letter matching and drawing game' },
+            { name: 'MathStorm', version: '1.0.0', description: 'Fast-paced arithmetic game' },
+            { name: 'guessTheNoteGame', version: '1.0.0', description: 'Ear training and piano keyboard game' },
+            { name: 'Calculator', version: '1.0.0', description: 'Modular arithmetic and fractions calculator' },
+            { name: 'accuCad', version: '1.0.0', description: 'Computer-aided drafting constraint system' },
+            { name: 'situation', version: '1.0.0', description: 'Executive career dossier and valuation portfolio' },
+            { name: 'AardvarkPlaylist', version: '1.0.0', description: 'YouTube playlist manager and visualizer' },
+            { name: 'SvgStudio', version: '1.0.0', description: 'Visual vector design tool' },
+            { name: 'Es6Converter', version: '1.0.0', description: 'ES6 class migration workbench' },
+            { name: 'LunoParser', version: '1.0.0', description: 'HTML Container AST Parser & Protocol Library (63-test suite)' },
+            { name: 'BookmarkletWorkshop', version: '1.0.0', description: 'AI Studio relay bookmarklet generator' },
+            { name: 'vibes', version: '3.8.0', description: 'Vibes desktop IDE and AST development environment' },
+            { name: 'Luno', version: '3.8.0', description: 'Luno Workspace cockpit core' },
+            { name: 'Library', isLibrary: true, version: '1.0.0', description: 'Central shared dependencies hub' }
+          ];
+
+          const mergedMap = new Map();
+          catalog.forEach(p => mergedMap.set(p.name, p));
+          idbProjects.forEach(p => {
+            if (!mergedMap.has(p.name)) {
+              mergedMap.set(p.name, Object.assign({ version: '1.0.0', description: 'Custom browser project' }, p));
+            }
+          });
+
+          return { success: true, projects: Array.from(mergedMap.values()) };
         }
 
-        // Catalog of known Karmatics sibling applications deployed on GitHub Pages
-        const catalog = [
-          { name: 'Basic3D', version: '1.0.0', description: 'Three.js 3D viewport starter' },
-          { name: 'BasicsWithDialogBox', version: '1.0.0', description: 'Windowing and resizable dialogs' },
-          { name: 'TriBlob', version: '1.0.0', description: '3D simulation with glossy HDR reflections' },
-          { name: 'teacup', version: '1.0.0', description: 'Utah teacup 3D rendering' },
-          { name: 'LegoDetective', version: '1.0.0', description: '3D LEGO brick rendering and detective game' },
-          { name: 'AlphabetGame', version: '1.0.0', description: 'Children letter matching and drawing game' },
-          { name: 'MathStorm', version: '1.0.0', description: 'Fast-paced arithmetic game' },
-          { name: 'guessTheNoteGame', version: '1.0.0', description: 'Ear training and piano keyboard game' },
-          { name: 'Calculator', version: '1.0.0', description: 'Modular arithmetic and fractions calculator' },
-          { name: 'accuCad', version: '1.0.0', description: 'Computer-aided drafting constraint system' },
-          { name: 'situation', version: '1.0.0', description: 'Executive career dossier and valuation portfolio' },
-          { name: 'AardvarkPlaylist', version: '1.0.0', description: 'YouTube playlist manager and visualizer' },
-          { name: 'SvgStudio', version: '1.0.0', description: 'Visual vector design tool' },
-          { name: 'Es6Converter', version: '1.0.0', description: 'ES6 class migration workbench' },
-          { name: 'LunoTests', version: '1.0.0', description: 'AST & protocol diagnostic test suite' },
-          { name: 'BookmarkletWorkshop', version: '1.0.0', description: 'AI Studio relay bookmarklet generator' },
-          { name: 'vibes', version: '3.8.0', description: 'Vibes desktop IDE and AST development environment' },
-          { name: 'Luno', version: '3.8.0', description: 'Luno Workspace cockpit core' },
-          { name: 'Library', isLibrary: true, version: '1.0.0', description: 'Central shared dependencies hub' }
-        ];
-
-        const mergedMap = new Map();
-        catalog.forEach(p => mergedMap.set(p.name, p));
-        idbProjects.forEach(p => {
-          if (!mergedMap.has(p.name)) {
-            mergedMap.set(p.name, Object.assign({ version: '1.0.0', description: 'Custom browser project' }, p));
-          }
-        });
-
-        return { success: true, projects: Array.from(mergedMap.values()) };
+        try {
+          return await LunoApiClient.safeJsonFetch('/api/projects/list');
+        } catch(e) {
+          const adapter = (typeof LunoFileSystem !== 'undefined') ? LunoFileSystem.getAdapter() : null;
+          if (adapter && adapter.listProjects) return await adapter.listProjects();
+          return { success: true, projects: [{ name: 'Luno' }, { name: 'LunoParser' }, { name: 'vibes' }, { name: 'Library' }] };
+        }
       }
-
-      try {
-        return await LunoApiClient.safeJsonFetch('/api/projects/list');
-      } catch(e) {
-        const adapter = (typeof LunoFileSystem !== 'undefined') ? LunoFileSystem.getAdapter() : null;
-        if (adapter && adapter.listProjects) return await adapter.listProjects();
-        return { success: true, projects: [{ name: 'Luno' }, { name: 'vibes' }, { name: 'Library' }] };
-      }
-    }
   static async fetchFsListRecursive(targetPath = '', project = '') {
     const cleanTarget = LunoApiClient.cleanPath(targetPath);
     if (LunoApiClient.isStaticMode()) {
@@ -118,64 +118,64 @@ class LunoApiClient {
   }
 
   static async fetchFsRead(filePath = '', project = '') {
-    const cleanFile = LunoApiClient.cleanPath(filePath);
-    let effectiveProject = project;
+      const cleanFile = LunoApiClient.cleanPath(filePath);
+      let effectiveProject = project;
 
-    // If path starts with an explicit sibling project prefix, infer the project from the path
-    const firstSegment = cleanFile.split('/')[0];
-    const knownSiblings = [
-      'vibes', 'aardvarkBookmarklet', 'AardvarkExtension', 'AardvarkPlaylist', 'AlphabetGame',
-      'Basic3D', 'BasicsWithDialogBox', 'BookmarkletWorkshop', 'BulbAndButton', 'Calculator',
-      'Es6Converter', 'LegoDetective', 'LunoTests', 'MathStorm', 'Penrose', 'PleasureAndPain',
-      'RobotDividend', 'SvgStudio', 'TriBlob', 'ValuationOfAccudraw', 'accuCad', 'accudraw',
-      'guessTheNoteGame', 'situation', 'squircle', 'Squircle', 'teacup', 'Library'
-    ];
+      // If path starts with an explicit sibling project prefix, infer the project from the path
+      const firstSegment = cleanFile.split('/')[0];
+      const knownSiblings = [
+        'vibes', 'aardvarkBookmarklet', 'AardvarkExtension', 'AardvarkPlaylist', 'AlphabetGame',
+        'Basic3D', 'BasicsWithDialogBox', 'BookmarkletWorkshop', 'BulbAndButton', 'Calculator',
+        'Es6Converter', 'LegoDetective', 'LunoParser', 'LunoTests', 'MathStorm', 'Penrose', 'PleasureAndPain',
+        'RobotDividend', 'SvgStudio', 'TriBlob', 'ValuationOfAccudraw', 'accuCad', 'accudraw',
+        'guessTheNoteGame', 'situation', 'squircle', 'Squircle', 'teacup', 'Library'
+      ];
 
-    if (knownSiblings.includes(firstSegment)) {
-      effectiveProject = firstSegment;
-    }
-
-    if (LunoApiClient.isStaticMode()) {
-      const adapter = LunoFileSystem.getAdapter();
-      if (adapter && adapter.read) {
-        const r = await adapter.read(cleanFile, effectiveProject);
-        if (r.success) return r;
+      if (knownSiblings.includes(firstSegment)) {
+        effectiveProject = firstSegment;
       }
-      try {
-        const fetchUrl = (typeof LunoFileSystem !== 'undefined' && LunoFileSystem.resolveStaticUrl)
-          ? LunoFileSystem.resolveStaticUrl(cleanFile, effectiveProject)
-          : ('./' + cleanFile);
 
-        let res = await fetch(fetchUrl);
-        const isLib = cleanFile.startsWith('Library/') || cleanFile.startsWith('library/') || effectiveProject === 'Library';
-
-        if (!res.ok && isLib) {
-          const cleanLib = cleanFile.replace(/^(?:Library|library)\//, '');
-          const fallbackUrl = 'https://karmatics.github.io/Library/' + cleanLib;
-          if (fetchUrl !== fallbackUrl) {
-            res = await fetch(fallbackUrl);
-          }
+      if (LunoApiClient.isStaticMode()) {
+        const adapter = LunoFileSystem.getAdapter();
+        if (adapter && adapter.read) {
+          const r = await adapter.read(cleanFile, effectiveProject);
+          if (r.success) return r;
         }
+        try {
+          const fetchUrl = (typeof LunoFileSystem !== 'undefined' && LunoFileSystem.resolveStaticUrl)
+            ? LunoFileSystem.resolveStaticUrl(cleanFile, effectiveProject)
+            : ('./' + cleanFile);
 
-        if (res.ok) {
-          const content = await res.text();
-          const trimmed = content.trim();
-          const isHtmlFile = cleanFile.toLowerCase().endsWith('.html') || cleanFile.toLowerCase().endsWith('.htm');
-          if (!isHtmlFile && (trimmed.startsWith('<!DOCTYPE') || trimmed.startsWith('<html'))) {
-            return { success: false, error: 'File not found: ' + cleanFile };
+          let res = await fetch(fetchUrl);
+          const isLib = cleanFile.startsWith('Library/') || cleanFile.startsWith('library/') || effectiveProject === 'Library';
+
+          if (!res.ok && isLib) {
+            const cleanLib = cleanFile.replace(/^(?:Library|library)\//, '');
+            const fallbackUrl = 'https://karmatics.github.io/Library/' + cleanLib;
+            if (fetchUrl !== fallbackUrl) {
+              res = await fetch(fallbackUrl);
+            }
           }
-          if (adapter && adapter.write) {
-            await adapter.write(cleanFile, content, effectiveProject);
+
+          if (res.ok) {
+            const content = await res.text();
+            const trimmed = content.trim();
+            const isHtmlFile = cleanFile.toLowerCase().endsWith('.html') || cleanFile.toLowerCase().endsWith('.htm');
+            if (!isHtmlFile && (trimmed.startsWith('<!DOCTYPE') || trimmed.startsWith('<html'))) {
+              return { success: false, error: 'File not found: ' + cleanFile };
+            }
+            if (adapter && adapter.write) {
+              await adapter.write(cleanFile, content, effectiveProject);
+            }
+            return { success: true, content, size: content.length };
           }
-          return { success: true, content, size: content.length };
-        }
-      } catch(fetchErr) {}
-      return { success: false, error: 'File not found in storage: ' + cleanFile };
+        } catch(fetchErr) {}
+        return { success: false, error: 'File not found in storage: ' + cleanFile };
+      }
+
+      const pParam = effectiveProject ? ('&project=' + encodeURIComponent(effectiveProject)) : '';
+      return await LunoApiClient.safeJsonFetch('/api/fs/read?path=' + encodeURIComponent(cleanFile) + pParam);
     }
-
-    const pParam = effectiveProject ? ('&project=' + encodeURIComponent(effectiveProject)) : '';
-    return await LunoApiClient.safeJsonFetch('/api/fs/read?path=' + encodeURIComponent(cleanFile) + pParam);
-  }
   static async fetchAllCode(project = '', options = {}) {
     const proj = project || (typeof ClientApp !== 'undefined' && ClientApp.getTargetProject ? ClientApp.getTargetProject() : 'Luno');
     const opts = (typeof options === 'boolean') ? { includeAllLibrary: options } : (options || {});

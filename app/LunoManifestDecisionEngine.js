@@ -257,63 +257,63 @@ class LunoManifestDecisionEngine {
     }
 
   static async resolveCanonicalFilePath(rawPath, manifestObj, targetProj) {
-    if (!rawPath || typeof rawPath !== 'string') return '';
-    let norm = rawPath.replace(/\\/g, '/').replace(/^\/+/, '').trim();
-    if (norm.startsWith('Luno Workspace/')) norm = norm.slice(15).trim();
-    if (norm.startsWith('LunoProjects/')) norm = norm.slice(13).trim();
-    if (norm.startsWith('./')) norm = norm.slice(2).trim();
+      if (!rawPath || typeof rawPath !== 'string') return '';
+      let norm = rawPath.replace(/\\/g, '/').replace(/^\/+/, '').trim();
+      if (norm.startsWith('Luno Workspace/')) norm = norm.slice(15).trim();
+      if (norm.startsWith('LunoProjects/')) norm = norm.slice(13).trim();
+      if (norm.startsWith('./')) norm = norm.slice(2).trim();
 
-    // Canonical single-path anchors
-    if (norm === 'server.js' || norm === 'Luno/server.js') {
-      return 'Luno/server.js';
-    }
-    if (norm === 'LunoLoader.js' || norm === 'app/LunoLoader.js' || norm === 'Luno/app/LunoLoader.js' || norm === 'Library/LunoLoader.js') {
-      return 'Library/LunoLoader.js';
-    }
-    if (norm === 'LunoPatchLog.html') return norm;
+      // Canonical single-path anchors
+      if (norm === 'server.js' || norm === 'Luno/server.js') {
+        return 'Luno/server.js';
+      }
+      if (norm === 'LunoLoader.js' || norm === 'app/LunoLoader.js' || norm === 'Luno/app/LunoLoader.js' || norm === 'Library/LunoLoader.js') {
+        return 'Library/LunoLoader.js';
+      }
+      if (norm === 'LunoPatchLog.html') return norm;
 
-    if (norm.startsWith('Library/') || norm.startsWith('library/')) {
-      return 'Library/' + norm.replace(/^(?:Library|library)\//, '');
-    }
+      if (norm.startsWith('Library/') || norm.startsWith('library/')) {
+        return 'Library/' + norm.replace(/^(?:Library|library)\//, '');
+      }
 
-    // Check if first segment is an existing sibling project directory (including vibes!)
-    const firstSlash = norm.indexOf('/');
-    if (firstSlash !== -1) {
-      const firstSegment = norm.slice(0, firstSlash);
-      const knownSiblings = [
-        'vibes', 'aardvarkBookmarklet', 'AardvarkExtension', 'AardvarkPlaylist', 'AlphabetGame',
-        'Basic3D', 'BasicsWithDialogBox', 'BookmarkletWorkshop', 'BulbAndButton', 'Calculator',
-        'Es6Converter', 'LegoDetective', 'LunoTests', 'MathStorm', 'Penrose', 'PleasureAndPain',
-        'RobotDividend', 'SvgStudio', 'TriBlob', 'ValuationOfAccudraw', 'accuCad', 'accudraw',
-        'guessTheNoteGame', 'situation', 'squircle', 'Squircle', 'teacup'
-      ];
-      if (knownSiblings.includes(firstSegment) || (targetProj && targetProj.toLowerCase() === firstSegment.toLowerCase())) {
+      // Check if first segment is an existing sibling project directory
+      const firstSlash = norm.indexOf('/');
+      if (firstSlash !== -1) {
+        const firstSegment = norm.slice(0, firstSlash);
+        const knownSiblings = [
+          'vibes', 'aardvarkBookmarklet', 'AardvarkExtension', 'AardvarkPlaylist', 'AlphabetGame',
+          'Basic3D', 'BasicsWithDialogBox', 'BookmarkletWorkshop', 'BulbAndButton', 'Calculator',
+          'Es6Converter', 'LegoDetective', 'LunoParser', 'LunoTests', 'MathStorm', 'Penrose', 'PleasureAndPain',
+          'RobotDividend', 'SvgStudio', 'TriBlob', 'ValuationOfAccudraw', 'accuCad', 'accudraw',
+          'guessTheNoteGame', 'situation', 'squircle', 'Squircle', 'teacup'
+        ];
+        if (knownSiblings.includes(firstSegment) || (targetProj && targetProj.toLowerCase() === firstSegment.toLowerCase())) {
+          return norm;
+        }
+
+        try {
+          if (typeof localStorage !== 'undefined') {
+            const cached = localStorage.getItem('luno_cached_projects_list');
+            if (cached) {
+              const list = JSON.parse(cached);
+              if (Array.isArray(list) && list.some(p => p && p.name.toLowerCase() === firstSegment.toLowerCase())) {
+                return norm;
+              }
+            }
+          }
+        } catch (e) {}
+      }
+
+      if (targetProj && norm.startsWith(targetProj + '/')) {
         return norm;
       }
 
-      try {
-        if (typeof localStorage !== 'undefined') {
-          const cached = localStorage.getItem('luno_cached_projects_list');
-          if (cached) {
-            const list = JSON.parse(cached);
-            if (Array.isArray(list) && list.some(p => p && p.name.toLowerCase() === firstSegment.toLowerCase())) {
-              return norm;
-            }
-          }
-        }
-      } catch (e) {}
-    }
+      if (targetProj === 'Luno' && !norm.startsWith('Luno/')) {
+        return 'Luno/' + norm;
+      }
 
-    if (targetProj && norm.startsWith(targetProj + '/')) {
-      return norm;
+      return targetProj ? (targetProj + '/' + norm) : norm;
     }
-
-    if (targetProj === 'Luno' && !norm.startsWith('Luno/')) {
-      return 'Luno/' + norm;
-    }
-
-    return targetProj ? (targetProj + '/' + norm) : norm;
-  }
 }
 
 globalThis.LunoManifestDecisionEngine = LunoManifestDecisionEngine;
