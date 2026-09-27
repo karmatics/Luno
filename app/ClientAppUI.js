@@ -24,7 +24,7 @@ class ClientAppUI {
           style: { display: 'flex', justifyContent: 'flex-end', width: '100%', marginBottom: '0.2rem' }
         },
           el('button', {
-            style: { padding: '0.2rem 0.55rem', background: '#21262d', color: '#8b949e', border: '1px solid #30363d', borderRadius: '12px', fontSize: '0.72rem', cursor: 'pointer', fontFamily: 'monospace', fontWeight: 'bold' },
+            style: { padding: '0.2rem 0.55rem', background: 'var(--bg-secondary, #21262d)', color: 'var(--text-secondary, #8b949e)', border: '1px solid var(--border-color, #30363d)', borderRadius: '12px', fontSize: '0.72rem', cursor: 'pointer', fontFamily: 'monospace', fontWeight: 'bold' },
             title: 'Click to expand Starter Panel',
             onclick: function() {
               localStorage.setItem('luno_starter_panel_collapsed', 'false');
@@ -40,16 +40,18 @@ class ClientAppUI {
 
       // Card 1: Start a New Project
       cards.push(el('div', {
+        className: 'luno-starter-card',
         style: {
-          background: '#0d1117',
-          border: '1px solid #58a6ff',
+          background: 'var(--bg-secondary, #0d1117)',
+          border: '1px solid var(--border-color, #30363d)',
           borderRadius: '8px',
           padding: '0.75rem',
           cursor: 'pointer',
           flex: '1 1 140px',
           display: 'flex',
           flexDirection: 'column',
-          gap: '0.25rem'
+          gap: '0.25rem',
+          transition: 'transform 0.15s ease, border-color 0.15s ease'
         },
         onclick: function() {
           try { localStorage.setItem('luno_project_intent', 'create_project'); } catch(e){}
@@ -58,22 +60,24 @@ class ClientAppUI {
           }
         }
       },
-        el('strong', { style: { color: '#58a6ff', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '0.3rem' } }, '🌱 New Project'),
-        el('span', { style: { fontSize: '0.72rem', color: '#8b949e', lineHeight: '1.3' } }, 'Select starter template.')
+        el('strong', { style: { color: 'var(--text-accent, #00f2fe)', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '0.3rem' } }, '🌱 New Project'),
+        el('span', { style: { fontSize: '0.72rem', color: 'var(--text-secondary, #8b949e)', lineHeight: '1.3' } }, 'Select starter template.')
       ));
 
-      // Card 2: Projects & Deploy Hub
+      // Card 2: Projects Hub
       cards.push(el('div', {
+        className: 'luno-starter-card',
         style: {
-          background: '#0d1117',
-          border: '1px solid #00f2fe',
+          background: 'var(--bg-secondary, #0d1117)',
+          border: '1px solid var(--border-color, #30363d)',
           borderRadius: '8px',
           padding: '0.75rem',
           cursor: 'pointer',
           flex: '1 1 140px',
           display: 'flex',
           flexDirection: 'column',
-          gap: '0.25rem'
+          gap: '0.25rem',
+          transition: 'transform 0.15s ease, border-color 0.15s ease'
         },
         onclick: function() {
           if (typeof LunoSpaDock !== 'undefined') {
@@ -81,22 +85,24 @@ class ClientAppUI {
           }
         }
       },
-        el('strong', { style: { color: '#00f2fe', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '0.3rem' } }, '🚀 Projects Hub'),
-        el('span', { style: { fontSize: '0.72rem', color: '#8b949e', lineHeight: '1.3' } }, 'Switch, preview & deploy.')
+        el('strong', { style: { color: 'var(--accent-secondary, #d2a8ff)', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '0.3rem' } }, '🚀 Projects Hub'),
+        el('span', { style: { fontSize: '0.72rem', color: 'var(--text-secondary, #8b949e)', lineHeight: '1.3' } }, 'Switch, preview & deploy.')
       ));
 
       // Card 3: Self-Improve Luno
       cards.push(el('div', {
+        className: 'luno-starter-card',
         style: {
-          background: '#0d1117',
-          border: '1px solid #238636',
+          background: 'var(--bg-secondary, #0d1117)',
+          border: '1px solid var(--border-color, #30363d)',
           borderRadius: '8px',
           padding: '0.75rem',
           cursor: 'pointer',
           flex: '1 1 140px',
           display: 'flex',
           flexDirection: 'column',
-          gap: '0.25rem'
+          gap: '0.25rem',
+          transition: 'transform 0.15s ease, border-color 0.15s ease'
         },
         onclick: function() {
           try { localStorage.setItem('luno_starter_panel_collapsed', 'true'); } catch(e){}
@@ -111,27 +117,28 @@ class ClientAppUI {
           }
         }
       },
-        el('strong', { style: { color: '#3fb950', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '0.3rem' } }, '⚡ Luno Core'),
-        el('span', { style: { fontSize: '0.72rem', color: '#8b949e', lineHeight: '1.3' } }, 'Edit workspace source.')
+        el('strong', { style: { color: 'var(--accent-green, #3fb950)', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '0.3rem' } }, '⚡ Luno Core'),
+        el('span', { style: { fontSize: '0.72rem', color: 'var(--text-secondary, #8b949e)', lineHeight: '1.3' } }, 'Edit workspace source.')
       ));
 
       return el('div', {
+        className: 'luno-starter-panel',
         style: {
-          background: '#161b22',
-          border: '1px solid #30363d',
+          background: 'var(--bg-card, #161b22)',
+          border: '1px solid var(--border-color, #30363d)',
           borderRadius: '10px',
           padding: '0.85rem',
           marginBottom: '0.65rem',
           display: 'flex',
           flexDirection: 'column',
           gap: '0.6rem',
-          boxShadow: '0 4px 12px rgba(0,0,0,0.3)'
+          boxShadow: 'var(--card-shadow, 0 4px 12px rgba(0,0,0,0.3))'
         }
       },
         el('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center' } },
-          el('strong', { style: { color: '#00f2fe', fontSize: '0.9rem', fontFamily: 'monospace' } }, '🚀 What do you want to build?'),
+          el('strong', { style: { color: 'var(--text-accent, #00f2fe)', fontSize: '0.9rem', fontFamily: 'monospace' } }, '🚀 What do you want to build?'),
           el('button', {
-            style: { background: 'none', border: 'none', color: '#8b949e', cursor: 'pointer', fontSize: '0.78rem', fontFamily: 'monospace' },
+            style: { background: 'none', border: 'none', color: 'var(--text-secondary, #8b949e)', cursor: 'pointer', fontSize: '0.78rem', fontFamily: 'monospace' },
             title: 'Minimize Starter Panel',
             onclick: function() {
               try { localStorage.setItem('luno_starter_panel_collapsed', 'true'); } catch(e){}
@@ -142,71 +149,80 @@ class ClientAppUI {
         el('div', { style: { display: 'flex', gap: '0.5rem', flexWrap: 'wrap' } }, ...cards)
       );
     }
+
   static renderOutboxCard(m) {
-    var el = m || (typeof LunoUIComponents !== 'undefined' ? LunoUIComponents.makeElement : null);
-    ClientAppUI.outboxExpanded = true;
+      var el = m || (typeof LunoUIComponents !== 'undefined' ? LunoUIComponents.makeElement : null);
+      ClientAppUI.outboxExpanded = true;
 
-    var arrowOutbox = el('span', {
-      className: 'luno-accordion-arrow',
-      style: { fontSize: '0.85rem', color: '#d2a8ff' }
-    }, '▼');
+      var arrowOutbox = el('span', {
+        className: 'luno-accordion-arrow',
+        style: { fontSize: '0.85rem', color: 'var(--accent-secondary, #d2a8ff)' }
+      }, '▼');
 
-    var outboxContent = el('div', {
-      id: 'outbox-card-content',
-      style: {
-        display: 'block',
-        marginTop: '0.5rem',
-        width: '100%',
-        boxSizing: 'border-box'
-      }
-    },
-      el('div', { id: 'outbox-queue-container', style: { width: '100%', minHeight: '80px' } })
-    );
-
-    setTimeout(function() {
-      if (typeof OutboxWidgetRenderer !== 'undefined' && OutboxWidgetRenderer.renderWidget) {
-        try { OutboxWidgetRenderer.renderWidget('outbox-queue-container'); } catch(e){}
-      } else if (typeof OutboxQueue !== 'undefined' && OutboxQueue.renderWidget) {
-        try { OutboxQueue.renderWidget(); } catch(e){}
-      }
-    }, 20);
-
-    return el('div', {
-      className: 'outbox-card glow-card',
-      style: { background: 'linear-gradient(135deg, #271052 0%, #161b22 100%)', border: '2px solid #8257e5', borderRadius: '10px', padding: '0.75rem', boxShadow: '0 4px 12px rgba(130, 87, 229, 0.25)', width: '100%', boxSizing: 'border-box' }
-    },
-      el('div', {
-        style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer', flexWrap: 'wrap', gap: '0.35rem' },
-        onclick: function(e) {
-          if (e.target.tagName !== 'BUTTON') {
-            ClientAppUI.outboxExpanded = !ClientAppUI.outboxExpanded;
-            outboxContent.style.display = ClientAppUI.outboxExpanded ? 'block' : 'none';
-            if (ClientAppUI.outboxExpanded) {
-              arrowOutbox.classList.remove('luno-arrow-collapsed');
-              if (typeof OutboxWidgetRenderer !== 'undefined') {
-                OutboxWidgetRenderer.renderWidget('outbox-queue-container');
-              }
-            } else {
-              arrowOutbox.classList.add('luno-arrow-collapsed');
-            }
-          }
+      var outboxContent = el('div', {
+        id: 'outbox-card-content',
+        style: {
+          display: 'block',
+          marginTop: '0.5rem',
+          width: '100%',
+          boxSizing: 'border-box'
         }
       },
-        el('div', { style: { display: 'flex', flexDirection: 'column', gap: '0.1rem' } },
-          el('div', { style: { fontSize: '1rem', fontWeight: 'bold', color: '#a371f7', display: 'flex', alignItems: 'center', gap: '0.35rem', whiteSpace: 'nowrap' } },
-            'OUTBOX',
-            el('span', { style: { fontSize: '0.72rem', color: '#d2a8ff', opacity: 0.85, fontWeight: 'normal' } }, '(send to llm)')
-          )
+        el('div', { id: 'outbox-queue-container', style: { width: '100%', minHeight: '80px' } })
+      );
+
+      setTimeout(function() {
+        if (typeof OutboxWidgetRenderer !== 'undefined' && OutboxWidgetRenderer.renderWidget) {
+          try { OutboxWidgetRenderer.renderWidget('outbox-queue-container'); } catch(e){}
+        } else if (typeof OutboxQueue !== 'undefined' && OutboxQueue.renderWidget) {
+          try { OutboxQueue.renderWidget(); } catch(e){}
+        }
+      }, 20);
+
+      return el('div', {
+        className: 'outbox-card luno-outbox-card glow-card',
+        style: {
+          background: 'var(--outbox-grad, linear-gradient(135deg, #271052 0%, #161b22 100%))',
+          border: '2px solid var(--accent-secondary, #8257e5)',
+          borderRadius: '10px',
+          padding: '0.75rem',
+          boxShadow: 'var(--card-shadow, 0 4px 12px rgba(130, 87, 229, 0.25))',
+          width: '100%',
+          boxSizing: 'border-box'
+        }
+      },
+        el('div', {
+          style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer', flexWrap: 'wrap', gap: '0.35rem' },
+          onclick: function(e) {
+            if (e.target.tagName !== 'BUTTON') {
+              ClientAppUI.outboxExpanded = !ClientAppUI.outboxExpanded;
+              outboxContent.style.display = ClientAppUI.outboxExpanded ? 'block' : 'none';
+              if (ClientAppUI.outboxExpanded) {
+                arrowOutbox.classList.remove('luno-arrow-collapsed');
+                if (typeof OutboxWidgetRenderer !== 'undefined') {
+                  OutboxWidgetRenderer.renderWidget('outbox-queue-container');
+                }
+              } else {
+                arrowOutbox.classList.add('luno-arrow-collapsed');
+              }
+            }
+          }
+        },
+          el('div', { style: { display: 'flex', flexDirection: 'column', gap: '0.1rem' } },
+            el('div', { style: { fontSize: '1rem', fontWeight: 'bold', color: 'var(--accent-secondary, #a371f7)', display: 'flex', alignItems: 'center', gap: '0.35rem', whiteSpace: 'nowrap' } },
+              'OUTBOX',
+              el('span', { style: { fontSize: '0.72rem', color: 'var(--text-secondary, #d2a8ff)', opacity: 0.85, fontWeight: 'normal' } }, '(send to llm)')
+            )
+          ),
+          arrowOutbox
         ),
-        arrowOutbox
-      ),
-      outboxContent
-    );
-  }
+        outboxContent
+      );
+    }
 
   static renderInboxCard(m) {
       var el = m || (typeof LunoUIComponents !== 'undefined' ? LunoUIComponents.makeElement : null);
-      var arrowInbox = el('span', { style: { fontSize: '0.85rem', color: '#7ee787' } }, ClientAppUI.inboxExpanded ? '▲' : '▼');
+      var arrowInbox = el('span', { style: { fontSize: '0.85rem', color: 'var(--accent-green, #7ee787)' } }, ClientAppUI.inboxExpanded ? '▲' : '▼');
 
       var pasteBtn = el('button', {
         id: 'btn-paste-chatbot',
@@ -214,7 +230,7 @@ class ClientAppUI {
         style: {
           width: '100%',
           padding: '0.85rem',
-          background: '#238636',
+          background: 'var(--accent-green, #238636)',
           color: '#fff',
           fontWeight: 'bold',
           border: 'none',
@@ -257,17 +273,17 @@ class ClientAppUI {
         el('div', { style: { display: 'flex', gap: '0.4rem', marginBottom: '0.45rem', flexWrap: 'wrap' } },
           pasteBtn
         ),
-        el('div', { id: 'inbox-metrics-badge', style: { fontSize: '0.72rem', color: '#7ee787', fontFamily: 'monospace' } })
+        el('div', { id: 'inbox-metrics-badge', style: { fontSize: '0.72rem', color: 'var(--accent-green, #7ee787)', fontFamily: 'monospace' } })
       );
 
       return el('div', {
-        className: 'inbox-card glow-card',
+        className: 'inbox-card luno-inbox-card glow-card',
         style: {
-          background: 'linear-gradient(135deg, #0d2818 0%, #161b22 100%)',
-          border: '2px solid #238636',
+          background: 'var(--inbox-grad, linear-gradient(135deg, #0d2818 0%, #161b22 100%))',
+          border: '2px solid var(--accent-green, #238636)',
           borderRadius: '10px',
           padding: '0.75rem',
-          boxShadow: '0 4px 12px rgba(35, 134, 54, 0.25)',
+          boxShadow: 'var(--card-shadow, 0 4px 12px rgba(35, 134, 54, 0.25))',
           width: '100%',
           boxSizing: 'border-box'
         }
@@ -283,9 +299,9 @@ class ClientAppUI {
           }
         },
           el('div', { style: { display: 'flex', flexDirection: 'column', gap: '0.1rem' } },
-            el('div', { style: { fontSize: '1rem', fontWeight: 'bold', color: '#3fb950', display: 'flex', alignItems: 'center', gap: '0.35rem', whiteSpace: 'nowrap' } },
+            el('div', { style: { fontSize: '1rem', fontWeight: 'bold', color: 'var(--accent-green, #3fb950)', display: 'flex', alignItems: 'center', gap: '0.35rem', whiteSpace: 'nowrap' } },
               'INBOX',
-              el('span', { style: { fontSize: '0.72rem', color: '#7ee787', opacity: 0.85, fontWeight: 'normal' } }, '(receive from LLM)')
+              el('span', { style: { fontSize: '0.72rem', color: 'var(--text-secondary, #7ee787)', opacity: 0.85, fontWeight: 'normal' } }, '(receive from LLM)')
             )
           ),
           arrowInbox
@@ -354,9 +370,9 @@ class ClientAppUI {
         style: {
           width: '100%',
           padding: '0.55rem 0.75rem',
-          background: '#0d1117',
-          color: '#00f2fe',
-          border: '1px solid #30363d',
+          background: 'var(--bg-input, #0d1117)',
+          color: 'var(--text-accent, #00f2fe)',
+          border: '1px solid var(--border-color, #30363d)',
           borderRadius: '6px',
           fontFamily: 'monospace',
           fontSize: '0.78rem',
@@ -369,7 +385,7 @@ class ClientAppUI {
         id: 'frontpage-chk-deploy-pages',
         type: 'checkbox',
         checked: true,
-        style: { width: '15px', height: '15px', cursor: 'pointer', accentColor: '#238636' }
+        style: { width: '15px', height: '15px', cursor: 'pointer', accentColor: 'var(--accent-green, #238636)' }
       });
 
       var btnAction = el('button', {
@@ -377,7 +393,7 @@ class ClientAppUI {
         style: {
           width: '100%',
           padding: '0.75rem',
-          background: '#238636',
+          background: 'var(--accent-green, #238636)',
           color: '#ffffff',
           border: 'none',
           borderRadius: '6px',
@@ -393,11 +409,11 @@ class ClientAppUI {
       chkDeployPages.onchange = function() {
         if (chkDeployPages.checked) {
           btnAction.textContent = '🚀 1-Tap Checkpoint & Deploy to Pages';
-          btnAction.style.background = '#238636';
+          btnAction.style.background = 'var(--accent-green, #238636)';
           btnAction.style.boxShadow = '0 4px 12px rgba(35, 134, 54, 0.3)';
         } else {
           btnAction.textContent = '📸 Save Local Git Snapshot Only';
-          btnAction.style.background = '#21262d';
+          btnAction.style.background = 'var(--bg-secondary, #21262d)';
           btnAction.style.boxShadow = 'none';
         }
       };
@@ -447,8 +463,8 @@ class ClientAppUI {
       var container = el('div', {
         id: 'luno-target-checkpoint-card',
         style: {
-          background: '#161b22',
-          border: '1px solid #30363d',
+          background: 'var(--bg-card, #161b22)',
+          border: '1px solid var(--border-color, #30363d)',
           borderRadius: '10px',
           padding: '0.85rem',
           margin: '0.3rem auto 0.5rem auto',
@@ -457,22 +473,22 @@ class ClientAppUI {
           gap: '0.6rem',
           width: '100%',
           boxSizing: 'border-box',
-          boxShadow: '0 4px 14px rgba(0,0,0,0.3)'
+          boxShadow: 'var(--card-shadow, 0 4px 14px rgba(0,0,0,0.3))'
         }
       },
-        el('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.4rem', borderBottom: '1px solid #21262d', paddingBottom: '0.4rem' } },
+        el('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.4rem', borderBottom: '1px solid var(--border-color, #21262d)', paddingBottom: '0.4rem' } },
           el('div', { style: { display: 'flex', alignItems: 'center', gap: '0.4rem' } },
-            el('strong', { style: { color: '#00f2fe', fontSize: '0.9rem' } }, '📸 CHECKPOINT & DEPLOY:'),
-            el('span', { style: { color: '#3fb950', fontWeight: 'bold', fontSize: '0.85rem' } }, currentTarget)
+            el('strong', { style: { color: 'var(--text-accent, #00f2fe)', fontSize: '0.9rem' } }, '📸 CHECKPOINT & DEPLOY:'),
+            el('span', { style: { color: 'var(--accent-green, #3fb950)', fontWeight: 'bold', fontSize: '0.85rem' } }, currentTarget)
           ),
           el('span', {
             id: 'checkpoint-btn-subtitle',
-            style: { fontSize: '0.72rem', color: uncommitted > 0 ? '#ff9800' : '#8b949e', fontWeight: 'bold' }
+            style: { fontSize: '0.72rem', color: uncommitted > 0 ? '#ff9800' : 'var(--text-secondary, #8b949e)', fontWeight: 'bold' }
           }, uncommitted + ' uncommitted file' + (uncommitted === 1 ? '' : 's'))
         ),
         noteInput,
         el('label', {
-          style: { display: 'flex', alignItems: 'center', gap: '0.45rem', fontSize: '0.75rem', color: '#c9d1d9', cursor: 'pointer', userSelect: 'none' }
+          style: { display: 'flex', alignItems: 'center', gap: '0.45rem', fontSize: '0.75rem', color: 'var(--text-primary, #c9d1d9)', cursor: 'pointer', userSelect: 'none' }
         },
           chkDeployPages,
           el('span', {}, '🚀 Deploy to GitHub Pages (push remote & publish live site)')
@@ -486,17 +502,17 @@ class ClientAppUI {
               href: liveUrl,
               target: '_blank',
               title: liveUrl,
-              style: { color: '#58a6ff', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '0.25rem', fontWeight: 'bold' }
+              style: { color: 'var(--text-accent, #58a6ff)', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '0.25rem', fontWeight: 'bold' }
             }, '🌐 Live Pages Site ↗'),
             el('a', {
               href: localUrl,
               target: '_blank',
-              title: 'Open http://localhost:8080' + localUrl + ' in full window',
-              style: { color: '#7ee787', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '0.25rem', fontWeight: 'bold' }
+              title: 'Open local URL in standalone window',
+              style: { color: 'var(--accent-green, #7ee787)', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '0.25rem', fontWeight: 'bold' }
             }, '🖥️ Standalone Tab ↗')
           ),
           el('button', {
-            style: { background: 'none', border: 'none', color: '#8b949e', cursor: 'pointer', fontSize: '0.72rem', fontFamily: 'monospace', textDecoration: 'underline' },
+            style: { background: 'none', border: 'none', color: 'var(--text-secondary, #8b949e)', cursor: 'pointer', fontSize: '0.72rem', fontFamily: 'monospace', textDecoration: 'underline' },
             onclick: function() {
               if (typeof LunoSpaDock !== 'undefined') LunoSpaDock.mountView('projects');
             }
@@ -559,20 +575,38 @@ class ClientAppUI {
   }
 
   static renderBottomBar(m, verText) {
-    var el = m || (typeof LunoUIComponents !== 'undefined' ? LunoUIComponents.makeElement : null);
-    var activeRoot = (typeof ClientAppCore !== 'undefined' && ClientAppCore.activeRootDir) ? ClientAppCore.activeRootDir : ((typeof ClientApp !== 'undefined' && ClientApp.activeRootDir) || 'Project Root');
-    return el('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '0.45rem', borderTop: '1px solid #30363d', paddingTop: '0.55rem', flexWrap: 'wrap', gap: '0.35rem', background: '#0d1117', padding: '0.55rem', borderRadius: '8px', width: '100%', boxSizing: 'border-box' } },
-      el('span', {
-        id: 'active-root-label',
-        style: { fontSize: '0.72rem', color: '#c9d1d9', background: '#21262d', border: '1px solid #30363d', padding: '0.25rem 0.55rem', borderRadius: '6px', fontFamily: 'monospace', cursor: 'pointer' },
-        onclick: function() {
-          if (typeof LunoSpaDock !== 'undefined') LunoSpaDock.mountView('projects');
+      var el = m || (typeof LunoUIComponents !== 'undefined' ? LunoUIComponents.makeElement : null);
+      var activeRoot = (typeof ClientAppCore !== 'undefined' && ClientAppCore.activeRootDir) ? ClientAppCore.activeRootDir : ((typeof ClientApp !== 'undefined' && ClientApp.activeRootDir) || 'Project Root');
+      return el('div', {
+        style: {
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          marginTop: '0.45rem',
+          borderTop: '1px solid var(--border-color, #30363d)',
+          paddingTop: '0.55rem',
+          flexWrap: 'wrap',
+          gap: '0.35rem',
+          background: 'var(--bg-secondary, #0d1117)',
+          padding: '0.55rem',
+          borderRadius: '8px',
+          width: '100%',
+          boxSizing: 'border-box'
         }
-      }, activeRoot),
-      el('span', { id: 'luno-version-tag', style: { fontSize: '0.68rem', color: '#8b949e', background: '#161b22', border: '1px solid #30363d', padding: '0.2rem 0.45rem', borderRadius: '6px', fontFamily: 'monospace', fontWeight: 'bold' } }, verText)
-    );
-  }
-
+      },
+        el('span', {
+          id: 'active-root-label',
+          style: { fontSize: '0.72rem', color: 'var(--text-primary, #c9d1d9)', background: 'var(--bg-input, #21262d)', border: '1px solid var(--border-color, #30363d)', padding: '0.25rem 0.55rem', borderRadius: '6px', fontFamily: 'monospace', cursor: 'pointer' },
+          onclick: function() {
+            if (typeof LunoSpaDock !== 'undefined') LunoSpaDock.mountView('projects');
+          }
+        }, activeRoot),
+        el('span', {
+          id: 'luno-version-tag',
+          style: { fontSize: '0.68rem', color: 'var(--text-secondary, #8b949e)', background: 'var(--bg-card, #161b22)', border: '1px solid var(--border-color, #30363d)', padding: '0.2rem 0.45rem', borderRadius: '6px', fontFamily: 'monospace', fontWeight: 'bold' }
+        }, verText)
+      );
+    }
   static renderOutboxFirstLayout(container) {
       if (!container) return;
       var m = typeof LunoUIComponents !== 'undefined' ? LunoUIComponents.makeElement : null;

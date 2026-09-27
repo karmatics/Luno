@@ -48,29 +48,34 @@ class ClientApp {
       }
       return 'Luno';
     }
-  static async init() {
-    console.log('[Luno] Workspace online.');
-    try {
-      await ClientApp.checkPing();
-      if (!ClientApp.targetProjectName && ClientApp.activeRootDir) {
-        ClientApp.targetProjectName = ClientApp.activeRootDir.split('/').filter(Boolean).pop() || 'Luno';
-      }
-      await ClientApp.fetchCodebaseMetrics();
-      var savedView = (typeof localStorage !== 'undefined' && localStorage.getItem('luno_active_dock_view')) || 'workspace';
-      if (typeof LunoSpaDock !== 'undefined') {
-        LunoSpaDock.mountView(savedView);
-      } else {
-        ClientApp.renderUI();
-      }
-      if (typeof OutboxQueue !== 'undefined') {
-        OutboxQueue.renderWidget();
-      }
-    } catch (err) {
-      console.error('[Luno Init Exception]', err);
-      ClientApp.renderErrorRecoveryUI(err);
-    }
-  }
 
+  static async init() {
+      console.log('[Luno] Workspace online.');
+      try {
+        // Boot dynamic CSS theme immediately so user preferences apply on load
+        if (typeof LunoThemeEngine !== 'undefined' && typeof LunoThemeEngine.applyDynamicTheme === 'function') {
+          LunoThemeEngine.applyDynamicTheme();
+        }
+
+        await ClientApp.checkPing();
+        if (!ClientApp.targetProjectName && ClientApp.activeRootDir) {
+          ClientApp.targetProjectName = ClientApp.activeRootDir.split('/').filter(Boolean).pop() || 'Luno';
+        }
+        await ClientApp.fetchCodebaseMetrics();
+        var savedView = (typeof localStorage !== 'undefined' && localStorage.getItem('luno_active_dock_view')) || 'workspace';
+        if (typeof LunoSpaDock !== 'undefined') {
+          LunoSpaDock.mountView(savedView);
+        } else {
+          ClientApp.renderUI();
+        }
+        if (typeof OutboxQueue !== 'undefined') {
+          OutboxQueue.renderWidget();
+        }
+      } catch (err) {
+        console.error('[Luno Init Exception]', err);
+        ClientApp.renderErrorRecoveryUI(err);
+      }
+    }
   static renderUI() {
     try {
       var root = document.getElementById('app-root') || document.body;

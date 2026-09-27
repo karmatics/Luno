@@ -52,8 +52,8 @@
     "Luno/app/LunoDeployEngine.js",
     "Luno/app/LunoZipExporter.js"
   ],
-  "processedCountSinceCheckpoint": 1,
-  "lastCheckpointTime": "2026-09-27T01:14:03.637Z",
+  "processedCountSinceCheckpoint": 12,
+  "lastCheckpointTime": "2026-09-27T05:44:28.003Z",
   "pendingCheckpointDescription": "Clean working tree",
   "changedMethods": {
     "app/LunoFileSystem.js": "2026-09-19T23:19:07.387Z",
@@ -69,7 +69,7 @@
     "app/ClientAppPaster.js": "2026-09-19T23:22:04.425Z",
     "app/LunoPrototypeMigrator.js": "2026-09-19T23:20:34.301Z",
     "luno.json": "2026-09-19T23:21:26.029Z",
-    "app/ClientAppUI.js": "2026-09-27T00:06:36.241Z",
+    "app/ClientAppUI.js": "2026-09-27T06:03:38.231Z",
     "app/LunoRunner.js": "2026-09-19T23:22:04.425Z",
     "launcher.js": "2026-09-19T23:22:04.425Z",
     "app/LunoCheckpointView.js": "2026-09-19T23:23:59.581Z",
@@ -103,12 +103,16 @@
     "vibes/src/editor/ui/fileTree/ProjectBrowserWebRootOpener.js": "2026-09-27T01:10:52.984Z",
     "vibes/src/editor/managers/LlmQueueManager.js": "2026-09-26T23:46:29.037Z",
     "Library/GlowingTooltip.js": "2026-09-26T23:46:29.037Z",
-    "app/LunoSettings.js": "2026-09-27T00:06:36.241Z",
-    "app/LunoThemeEngine.js": "2026-09-27T00:06:36.241Z",
+    "app/LunoSettings.js": "2026-09-27T05:57:53.244Z",
+    "app/LunoThemeEngine.js": "2026-09-27T06:07:01.684Z",
     "app/OutboxPromptBox.js": "2026-09-27T05:40:56.897Z",
     "index.html": "2026-09-27T01:12:00.567Z",
     "vibes/src/tools/browser/ProjectBrowserWebRootOpener.js": "2026-09-27T01:08:45.984Z",
-    "app/acorn.js": "2026-09-27T01:12:00.567Z"
+    "app/acorn.js": "2026-09-27T01:12:00.567Z",
+    "app/LunoCssChunks.js": "2026-09-27T06:07:01.684Z",
+    "app/ClientApp.js": "2026-09-27T05:59:11.185Z",
+    "app/LunoSpaHeaderNav.js": "2026-09-27T06:03:38.231Z",
+    "app/OutboxWidgetRenderer.js": "2026-09-27T06:03:38.231Z"
   },
   "library": [
     "DomBasics.js",
