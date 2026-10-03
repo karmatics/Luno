@@ -47,58 +47,60 @@ class LunoApiClient {
   }
 
   static async fetchProjectsList() {
-        if (LunoApiClient.isStaticMode()) {
-          const adapter = LunoFileSystem.getAdapter();
-          let idbProjects = [];
-          if (adapter && adapter.listProjects) {
-            try {
-              const res = await adapter.listProjects();
-              idbProjects = (res && res.projects) || [];
-            } catch(e) {}
+          if (LunoApiClient.isStaticMode()) {
+            const adapter = LunoFileSystem.getAdapter();
+            let idbProjects = [];
+            if (adapter && adapter.listProjects) {
+              try {
+                const res = await adapter.listProjects();
+                idbProjects = (res && res.projects) || [];
+              } catch(e) {}
+            }
+
+            // Catalog of known Karmatics sibling applications deployed on GitHub Pages
+            const catalog = [
+              { name: 'Basic3D', version: '1.0.0', description: 'Three.js 3D viewport starter' },
+              { name: 'BasicsWithDialogBox', version: '1.0.0', description: 'Windowing and resizable dialogs' },
+              { name: 'TriBlob', version: '1.0.0', description: '3D simulation with glossy HDR reflections' },
+              { name: 'teacup', version: '1.0.0', description: 'Utah teacup 3D rendering' },
+              { name: 'LegoDetective', version: '1.0.0', description: '3D LEGO brick rendering and detective game' },
+              { name: 'AlphabetGame', version: '1.0.0', description: 'Children letter matching and drawing game' },
+              { name: 'MathStorm', version: '1.0.0', description: 'Fast-paced arithmetic game' },
+              { name: 'guessTheNoteGame', version: '1.0.0', description: 'Ear training and piano keyboard game' },
+              { name: 'Calculator', version: '1.0.0', description: 'Modular arithmetic and fractions calculator' },
+              { name: 'accuCad', version: '1.0.0', description: 'Computer-aided drafting constraint system' },
+              { name: 'situation', version: '1.0.0', description: 'Executive career dossier and valuation portfolio' },
+              { name: 'EconomicsOfAutomation', version: '1.0.0', description: 'Interactive visual essay and economics simulator' },
+              { name: 'AardvarkPlaylist', version: '1.0.0', description: 'YouTube playlist manager and visualizer' },
+              { name: 'AardvarkExtension', version: '1.0.0', description: 'Aardvark Chrome browser companion extension' },
+              { name: 'SvgStudio', version: '1.0.0', description: 'Visual vector design tool' },
+              { name: 'Es6Converter', version: '1.0.0', description: 'ES6 class migration workbench' },
+              { name: 'LunoParser', version: '1.0.0', description: 'HTML Container AST Parser & Protocol Library (63-test suite)' },
+              { name: 'BookmarkletWorkshop', version: '1.0.0', description: 'AI Studio relay bookmarklet generator' },
+              { name: 'vibes', version: '3.8.0', description: 'Vibes desktop IDE and AST development environment' },
+              { name: 'Luno', version: '3.8.0', description: 'Luno Workspace cockpit core' },
+              { name: 'Library', isLibrary: true, version: '1.0.0', description: 'Central shared dependencies hub' }
+            ];
+
+            const mergedMap = new Map();
+            catalog.forEach(p => mergedMap.set(p.name, p));
+            idbProjects.forEach(p => {
+              if (!mergedMap.has(p.name)) {
+                mergedMap.set(p.name, Object.assign({ version: '1.0.0', description: 'Custom browser project' }, p));
+              }
+            });
+
+            return { success: true, projects: Array.from(mergedMap.values()) };
           }
 
-          // Catalog of known Karmatics sibling applications deployed on GitHub Pages
-          const catalog = [
-            { name: 'Basic3D', version: '1.0.0', description: 'Three.js 3D viewport starter' },
-            { name: 'BasicsWithDialogBox', version: '1.0.0', description: 'Windowing and resizable dialogs' },
-            { name: 'TriBlob', version: '1.0.0', description: '3D simulation with glossy HDR reflections' },
-            { name: 'teacup', version: '1.0.0', description: 'Utah teacup 3D rendering' },
-            { name: 'LegoDetective', version: '1.0.0', description: '3D LEGO brick rendering and detective game' },
-            { name: 'AlphabetGame', version: '1.0.0', description: 'Children letter matching and drawing game' },
-            { name: 'MathStorm', version: '1.0.0', description: 'Fast-paced arithmetic game' },
-            { name: 'guessTheNoteGame', version: '1.0.0', description: 'Ear training and piano keyboard game' },
-            { name: 'Calculator', version: '1.0.0', description: 'Modular arithmetic and fractions calculator' },
-            { name: 'accuCad', version: '1.0.0', description: 'Computer-aided drafting constraint system' },
-            { name: 'situation', version: '1.0.0', description: 'Executive career dossier and valuation portfolio' },
-            { name: 'AardvarkPlaylist', version: '1.0.0', description: 'YouTube playlist manager and visualizer' },
-            { name: 'SvgStudio', version: '1.0.0', description: 'Visual vector design tool' },
-            { name: 'Es6Converter', version: '1.0.0', description: 'ES6 class migration workbench' },
-            { name: 'LunoParser', version: '1.0.0', description: 'HTML Container AST Parser & Protocol Library (63-test suite)' },
-            { name: 'BookmarkletWorkshop', version: '1.0.0', description: 'AI Studio relay bookmarklet generator' },
-            { name: 'vibes', version: '3.8.0', description: 'Vibes desktop IDE and AST development environment' },
-            { name: 'Luno', version: '3.8.0', description: 'Luno Workspace cockpit core' },
-            { name: 'Library', isLibrary: true, version: '1.0.0', description: 'Central shared dependencies hub' }
-          ];
-
-          const mergedMap = new Map();
-          catalog.forEach(p => mergedMap.set(p.name, p));
-          idbProjects.forEach(p => {
-            if (!mergedMap.has(p.name)) {
-              mergedMap.set(p.name, Object.assign({ version: '1.0.0', description: 'Custom browser project' }, p));
-            }
-          });
-
-          return { success: true, projects: Array.from(mergedMap.values()) };
+          try {
+            return await LunoApiClient.safeJsonFetch('/api/projects/list');
+          } catch(e) {
+            const adapter = (typeof LunoFileSystem !== 'undefined') ? LunoFileSystem.getAdapter() : null;
+            if (adapter && adapter.listProjects) return await adapter.listProjects();
+            return { success: true, projects: [{ name: 'Luno' }, { name: 'LunoParser' }, { name: 'vibes' }, { name: 'Library' }] };
+          }
         }
-
-        try {
-          return await LunoApiClient.safeJsonFetch('/api/projects/list');
-        } catch(e) {
-          const adapter = (typeof LunoFileSystem !== 'undefined') ? LunoFileSystem.getAdapter() : null;
-          if (adapter && adapter.listProjects) return await adapter.listProjects();
-          return { success: true, projects: [{ name: 'Luno' }, { name: 'LunoParser' }, { name: 'vibes' }, { name: 'Library' }] };
-        }
-      }
   static async fetchFsListRecursive(targetPath = '', project = '') {
     const cleanTarget = LunoApiClient.cleanPath(targetPath);
     if (LunoApiClient.isStaticMode()) {

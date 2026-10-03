@@ -13,11 +13,7 @@ class LunoClassPatcher {
           try {
             var p = require('path');
             var root = (typeof LunoServer !== 'undefined' && LunoServer.getRootDir) ? LunoServer.getRootDir() : process.cwd();
-            var appAcorn = p.join(root, 'app', 'acorn.js');
-            if (require('fs').existsSync(appAcorn)) {
-              acornObj = require(appAcorn);
-            }
-          } catch (e2) {}
+            } catch(e2) {}
         }
         if (!acornObj) {
           try {

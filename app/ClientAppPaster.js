@@ -79,9 +79,7 @@ class ClientAppPaster {
         if (!rawText || !rawText.trim()) return;
 
         try {
-          if (typeof LunoAcornLoader !== 'undefined' && typeof LunoAcornLoader.ensureLoaded === 'function') {
-            try { await LunoAcornLoader.ensureLoaded(); } catch (e) {}
-          }
+          // Acorn loaded via CDN in index.html
 
           var targetProj = (typeof ClientApp !== 'undefined' && ClientApp.getTargetProject) ? ClientApp.getTargetProject() : 'Luno';
 

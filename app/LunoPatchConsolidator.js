@@ -13,9 +13,7 @@ class LunoPatchConsolidator {
       try {
         var targetProj = projectOverride || (typeof ClientApp !== 'undefined' && ClientApp.getTargetProject ? ClientApp.getTargetProject() : 'Luno');
 
-        if (typeof LunoAcornLoader !== 'undefined' && LunoAcornLoader.ensureLoaded) {
-          try { await LunoAcornLoader.ensureLoaded(); } catch(e){}
-        }
+        // Acorn loaded via CDN in index.html
 
         var logRes = await LunoApiClient.fetchFsRead('LunoPatchLog.html', targetProj);
         if (!logRes || !logRes.success || !logRes.content || !logRes.content.trim()) {

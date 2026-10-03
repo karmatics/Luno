@@ -20,9 +20,8 @@
     }
   </style>
 
-  <!-- Preload Acorn AST parser directly via local vendor with CDN fallback -->
-  <script src="/Luno/vendor/acorn.js" onerror="this.onerror=null; this.src='https://cdn.jsdelivr.net/npm/acorn@8.11.3/dist/acorn.min.js';"></script>
-  <script src="./app/acorn.js"></script>
+    <!-- Acorn AST Parser (CDN with secondary CDN fallback) -->
+  <script src="https://cdn.jsdelivr.net/npm/acorn@8.11.3/dist/acorn.min.js" onerror="this.onerror=null; this.src='https://cdnjs.cloudflare.com/ajax/libs/acorn/8.11.3/acorn.min.js';"></script>
 
   <!-- Single entry loader: reads dependencies dynamically from luno.json -->
   <script src="/Library/LunoLoader.js" onerror="this.onerror=null; (function(el){ var u=(window.location.hostname.endsWith('.github.io')?window.location.hostname.split('.')[0]:'karmatics'); el.src='https://'+u+'.github.io/Library/LunoLoader.js'; el.onerror=function(){ el.onerror=null; el.src='https://karmatics.github.io/Library/LunoLoader.js'; }; })(this);"></script>
