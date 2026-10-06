@@ -52,8 +52,8 @@
     "Luno/app/LunoDeployEngine.js",
     "Luno/app/LunoZipExporter.js"
   ],
-  "processedCountSinceCheckpoint": 7,
-  "lastCheckpointTime": "2026-09-27T18:46:41.434Z",
+  "processedCountSinceCheckpoint": 0,
+  "lastCheckpointTime": "2026-10-03T01:19:33.741Z",
   "pendingCheckpointDescription": "Clean working tree",
   "changedMethods": {
     "app/LunoFileSystem.js": "2026-09-19T23:19:07.387Z",

@@ -609,7 +609,7 @@ class LunoServer {
     const activeRoot = LunoServer.getRootDir();
     const parentDir = LunoServer.getWebRootDir();
     const projectList = [];
-    const ignoredAssetFolders = ['playlists', 'pianorolls', 'assets', 'images', 'recursi', 'node_modules', 'dist', 'build', '.git'];
+    const ignoredAssetFolders = ['playlists', 'assets', 'images', 'recursi', 'node_modules', 'dist', 'build', '.git'];
 
     try {
       if (fs.existsSync(parentDir)) {

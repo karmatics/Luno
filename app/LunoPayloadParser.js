@@ -34,7 +34,7 @@ class LunoPayloadParser {
 
   static parse(text) {
       if (!text || typeof text !== 'string') {
-        return { files: [], serverScript: '', requests: [], debugLogs: ['Input text is empty'] };
+        return { files: [], serverScript: '', clientScript: '', requests: [], debugLogs: ['Input text is empty'] };
       }
 
       var rawInputLen = text.length;
@@ -42,6 +42,7 @@ class LunoPayloadParser {
 
       var files = [];
       var serverScript = '';
+      var clientScript = '';
       var requests = [];
       var debugLogs = [];
       var pos = 0;
@@ -126,8 +127,6 @@ class LunoPayloadParser {
 
         var isRegexPrefix = function(prevChar, prevWord) {
           if (!prevChar) return true;
-          // '{' restored (unambiguous regex start, e.g. `${/["]/.test(x)}` or `{ /regex/ }`)
-          // '}' omitted to prevent object literal division {n: 4}/2 misfiring
           if ('(,=:[!&|;{?+-*%^~<>'.indexOf(prevChar) !== -1) return true;
           var keywords = ['return', 'case', 'typeof', 'void', 'delete', 'throw', 'yield', 'await', 'in', 'instanceof', 'of', 'new'];
           return keywords.indexOf(prevWord) !== -1;
@@ -142,7 +141,6 @@ class LunoPayloadParser {
           while (b >= 0 && cleaned.charAt(b) === '\\') { backslashCount++; b--; }
           var isEscaped = (backslashCount % 2 === 1);
 
-          // CSS (<style>)
           if (isStyle) {
             if (inBlockComment) {
               if (curr === '*' && next === '/') { inBlockComment = false; i += 2; continue; }
@@ -165,7 +163,6 @@ class LunoPayloadParser {
             continue;
           }
 
-          // HTML / SVG (<template>, <svg>)
           if (isMarkup) {
             if (inHtmlComment) {
               if (curr === '-' && next === '-' && (i + 2 < len) && cleaned.charAt(i + 2) === '>') { inHtmlComment = false; i += 3; continue; }
@@ -189,7 +186,6 @@ class LunoPayloadParser {
             continue;
           }
 
-          // JS (<script>)
           var currentContext = stack.length > 0 ? stack[stack.length - 1] : null;
           var isInsideRawTemplate = (currentContext === 'TEMPLATE_RAW');
 
@@ -367,6 +363,8 @@ class LunoPayloadParser {
           requests.push({ tagName: tagWord, filePath, methodSpec, content: innerContent });
         } else if (action === 'run-server' || filePath === 'RUN: SERVER') {
           serverScript += (serverScript ? '\n\n' : '') + innerContent;
+        } else if (action === 'run-client' || filePath === 'RUN: CLIENT') {
+          clientScript += (clientScript ? '\n\n' : '') + innerContent;
         } else if (filePath && filePath !== '...') {
           files.push({ tagName: tagWord, filePath, methodSpec, action, content: innerContent });
         }
@@ -374,8 +372,8 @@ class LunoPayloadParser {
         pos = closeEndIdx + 1;
       }
 
-      return { files, serverScript, requests, debugLogs };
-    }
+      return { files, serverScript, clientScript, requests, debugLogs };
+  }
   static parsePatchLog(patchLogHtml) {
     return LunoPayloadParser.parse(patchLogHtml);
   }
