@@ -133,92 +133,119 @@ class LunoDeployEngine {
   }
 
   static async createRemoteRepoOnGitHub(repoName) {
-      var token = LunoDeployEngine.getGithubToken();
-      if (!token) return { success: false, noToken: true };
-
-      var account = LunoDeployEngine.getGithubAccount();
-      var payload = {
-        name: repoName,
-        description: 'Standalone repository for ' + repoName + ' - deployed via Luno Workspace',
-        homepage: 'https://' + account.toLowerCase() + '.github.io/' + repoName + '/',
-        private: false,
-        has_issues: true,
-        has_projects: false,
-        has_wiki: false
-      };
-
-      var headers = {
-        'Authorization': 'token ' + token,
-        'Accept': 'application/vnd.github.v3+json',
-        'Content-Type': 'application/json'
-      };
-
-      try {
-        // First attempt: create under authenticated user (/user/repos)
-        var res = await fetch('https://api.github.com/user/repos', {
-          method: 'POST',
-          headers: headers,
-          body: JSON.stringify(payload)
-        });
-
-        var data = await res.json();
-
-        if (res.ok) {
-          return { success: true, repoUrl: data.html_url, sshUrl: data.ssh_url };
-        }
-
-        // If already exists under user account, treat as success
-        if (data.errors && data.errors.some(function(e) { return e.message && e.message.includes('already exists'); })) {
-          return { success: true, alreadyExists: true, message: 'Repository already exists on GitHub.' };
-        }
-
-        // Second attempt: if user is not the account owner, try organization endpoint (/orgs/{account}/repos)
-        var orgRes = await fetch('https://api.github.com/orgs/' + encodeURIComponent(account) + '/repos', {
-          method: 'POST',
-          headers: headers,
-          body: JSON.stringify(payload)
-        });
-
-        var orgData = await orgRes.json();
-        if (orgRes.ok) {
-          return { success: true, repoUrl: orgData.html_url, sshUrl: orgData.ssh_url };
-        } else {
-          if (orgData.errors && orgData.errors.some(function(e) { return e.message && e.message.includes('already exists'); })) {
-            return { success: true, alreadyExists: true, message: 'Repository already exists on GitHub.' };
-          }
-          return { success: false, error: (orgData.message || data.message || 'GitHub API error') };
-        }
-      } catch(err) {
-        return { success: false, error: err.message };
+    var token = LunoDeployEngine.getGithubToken();
+    if (!token) {
+      if (typeof ClientApp !== 'undefined' && ClientApp.showToast) {
+        ClientApp.showToast('GitHub PAT token required to auto-create repository.', 'info', '🔑');
       }
+      return { success: false, noToken: true, error: 'No GitHub PAT token configured' };
     }
+
+    var account = LunoDeployEngine.getGithubAccount();
+    var payload = {
+      name: repoName,
+      description: repoName + ' application - deployed via Luno Workspace',
+      homepage: 'https://' + account.toLowerCase() + '.github.io/' + repoName + '/',
+      private: false,
+      has_issues: true,
+      has_projects: false,
+      has_wiki: false
+    };
+
+    var headers = {
+      'Authorization': 'token ' + token,
+      'Accept': 'application/vnd.github.v3+json',
+      'Content-Type': 'application/json'
+    };
+
+    try {
+      // 1. Check if repo already exists first
+      var checkRes = await fetch('https://api.github.com/repos/' + encodeURIComponent(account) + '/' + encodeURIComponent(repoName), {
+        method: 'GET',
+        headers: headers
+      });
+      if (checkRes.ok) {
+        var checkData = await checkRes.json();
+        return { success: true, alreadyExists: true, repoUrl: checkData.html_url, sshUrl: checkData.ssh_url };
+      }
+
+      // 2. Create repo under user account (/user/repos)
+      var res = await fetch('https://api.github.com/user/repos', {
+        method: 'POST',
+        headers: headers,
+        body: JSON.stringify(payload)
+      });
+
+      var data = await res.json();
+      if (res.ok) {
+        return { success: true, repoUrl: data.html_url, sshUrl: data.ssh_url };
+      }
+
+      if (data.errors && data.errors.some(function(e) { return e.message && e.message.includes('already exists'); })) {
+        return { success: true, alreadyExists: true };
+      }
+
+      // 3. Fallback to org endpoint (/orgs/:account/repos) if user is in an organization
+      var orgRes = await fetch('https://api.github.com/orgs/' + encodeURIComponent(account) + '/repos', {
+        method: 'POST',
+        headers: headers,
+        body: JSON.stringify(payload)
+      });
+
+      var orgData = await orgRes.json();
+      if (orgRes.ok) {
+        return { success: true, repoUrl: orgData.html_url, sshUrl: orgData.ssh_url };
+      }
+
+      if (orgData.errors && orgData.errors.some(function(e) { return e.message && e.message.includes('already exists'); })) {
+        return { success: true, alreadyExists: true };
+      }
+
+      return { success: false, error: (orgData.message || data.message || 'GitHub API error') };
+    } catch(err) {
+      return { success: false, error: err.message };
+    }
+  }
 
   static async enableGitHubPages(repoName) {
-      var token = LunoDeployEngine.getGithubToken();
-      if (!token) return { success: false };
+    var token = LunoDeployEngine.getGithubToken();
+    if (!token) return { success: false, error: 'No GitHub PAT token configured' };
 
-      var account = LunoDeployEngine.getGithubAccount();
-      try {
-        var res = await fetch('https://api.github.com/repos/' + encodeURIComponent(account) + '/' + encodeURIComponent(repoName) + '/pages', {
-          method: 'POST',
-          headers: {
-            'Authorization': 'token ' + token,
-            'Accept': 'application/vnd.github.v3+json',
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            source: {
-              branch: 'main',
-              path: '/'
-            }
-          })
-        });
-        return await res.json();
-      } catch(e) {
-        return { success: false, error: e.message };
+    var account = LunoDeployEngine.getGithubAccount();
+    var headers = {
+      'Authorization': 'token ' + token,
+      'Accept': 'application/vnd.github.v3+json',
+      'Content-Type': 'application/json'
+    };
+
+    try {
+      // Check if Pages is already active
+      var statusRes = await fetch('https://api.github.com/repos/' + encodeURIComponent(account) + '/' + encodeURIComponent(repoName) + '/pages', {
+        method: 'GET',
+        headers: headers
+      });
+      if (statusRes.ok) {
+        return { success: true, status: 'already_enabled' };
       }
-    }
 
+      // Enable Pages on main branch root
+      var res = await fetch('https://api.github.com/repos/' + encodeURIComponent(account) + '/' + encodeURIComponent(repoName) + '/pages', {
+        method: 'POST',
+        headers: headers,
+        body: JSON.stringify({
+          source: {
+            branch: 'main',
+            path: '/'
+          }
+        })
+      });
+
+      var data = await res.json();
+      return { success: res.ok, data: data };
+    } catch(e) {
+      return { success: false, error: e.message };
+    }
+  }
   static async ensureGitHubPagesParity(projectName) {
       var pName = projectName || (typeof ClientApp !== 'undefined' && ClientApp.getTargetProject ? ClientApp.getTargetProject() : 'Luno');
 
@@ -389,250 +416,250 @@ class LunoDeployEngine {
   }
 
   static async deployProjectToGitHub(projectName, commitMsg, customRemoteUrl, options) {
-      var pName = projectName || (typeof ClientApp !== 'undefined' && ClientApp.getTargetProject ? ClientApp.getTargetProject() : 'Luno');
-      var remoteName = LunoDeployEngine.getRemoteRepoName(pName);
-      var account = LunoDeployEngine.getGithubAccount();
-      var msg = commitMsg || ('[' + pName + '] Checkpoint ' + new Date().toLocaleString());
-      var token = LunoDeployEngine.getGithubToken();
-      var isLibraryProject = (pName.toLowerCase() === 'library');
-      var opts = options || {};
-      var deployToPages = opts.deployToPages !== false;
+    var pName = projectName || (typeof ClientApp !== 'undefined' && ClientApp.getTargetProject ? ClientApp.getTargetProject() : 'Luno');
+    var remoteName = LunoDeployEngine.getRemoteRepoName(pName);
+    var account = LunoDeployEngine.getGithubAccount();
+    var msg = commitMsg || ('[' + pName + '] Checkpoint ' + new Date().toLocaleString());
+    var token = LunoDeployEngine.getGithubToken();
+    var isLibraryProject = (pName.toLowerCase() === 'library');
+    var opts = options || {};
+    var deployToPages = opts.deployToPages !== false;
 
-      try {
-        var isStatic = (typeof LunoFileSystem !== 'undefined' && typeof LunoFileSystem.isStaticHosting === 'function')
-          ? LunoFileSystem.isStaticHosting()
-          : (typeof LunoApiClient !== 'undefined' && LunoApiClient.isStaticMode());
+    // Prompt for token if missing so deploy can auto-create the repository on GitHub
+    if (deployToPages && !token) {
+      var prompted = prompt(
+        '🔑 GitHub Personal Access Token (PAT) required to auto-create and deploy "' + remoteName + '":\n\n' +
+        'Paste your token below (it will be saved for all future 1-tap deploys):',
+        ''
+      );
+      if (prompted && prompted.trim()) {
+        token = prompted.trim();
+        LunoDeployEngine.setGithubToken(token);
+      } else {
+        return {
+          success: false,
+          error: 'Deployment aborted: GitHub Personal Access Token is required to initialize remote repository.'
+        };
+      }
+    }
 
-        if (isStatic) {
-          // Pure Browser Local Snapshot: No GitHub API calls or PAT required
-          if (!deployToPages) {
-            try {
-              var metaRes = await LunoApiClient.fetchFsRead('luno.json', pName);
-              var meta = {};
-              if (metaRes && metaRes.content) {
-                meta = JSON.parse(metaRes.content);
-              }
-              meta.processedCountSinceCheckpoint = 0;
-              meta.lastCheckpointTime = new Date().toISOString();
-              meta.pendingCheckpointDescription = msg;
+    try {
+      var isStatic = (typeof LunoFileSystem !== 'undefined' && typeof LunoFileSystem.isStaticHosting === 'function')
+        ? LunoFileSystem.isStaticHosting()
+        : (typeof LunoApiClient !== 'undefined' && LunoApiClient.isStaticMode());
 
-              var adapter = LunoFileSystem.getAdapter();
-              if (adapter && adapter.write) {
-                await adapter.write('luno.json', JSON.stringify(meta, null, 2) + '\n', pName);
-              }
-
-              if (typeof ClientApp !== 'undefined') {
-                ClientApp.uncommittedCount = 0;
-                await ClientApp.fetchCodebaseMetrics(pName);
-              }
-            } catch(metaErr) {
-              console.warn('[LunoDeployEngine] Static checkpoint metadata warning:', metaErr.message);
-            }
-
-            return {
-              success: true,
-              output: '📸 Recorded local snapshot for [' + pName + '] in IndexedDB storage.\n(Remote GitHub push skipped: Local Snapshot Only mode)'
-            };
+      // Auto-create repository on GitHub before running git push
+      if (deployToPages && token) {
+        try {
+          var createResult = await LunoDeployEngine.createRemoteRepoOnGitHub(remoteName);
+          if (!createResult.success && !createResult.alreadyExists) {
+            console.warn('[LunoDeployEngine] Auto-create repository notice:', createResult.error);
           }
+        } catch(e) {}
+      }
 
-          // Live GitHub Pages Deploy via Git Data API (Single Atomic Commit)
-          if (!token) {
-            return {
-              success: false,
-              error: 'A GitHub Personal Access Token (PAT) is required to deploy directly from browser-hosted Luno on GitHub Pages. Please enter your PAT in the Deploy Hub.'
-            };
-          }
-
+      if (isStatic) {
+        // Pure Browser Local Snapshot: No GitHub API calls or PAT required
+        if (!deployToPages) {
           try {
-            await LunoDeployEngine.createRemoteRepoOnGitHub(remoteName);
-          } catch(e) {}
+            var metaRes = await LunoApiClient.fetchFsRead('luno.json', pName);
+            var meta = {};
+            if (metaRes && metaRes.content) {
+              meta = JSON.parse(metaRes.content);
+            }
+            meta.processedCountSinceCheckpoint = 0;
+            meta.lastCheckpointTime = new Date().toISOString();
+            meta.pendingCheckpointDescription = msg;
 
-          var codeData = await LunoApiClient.fetchAllCode(pName, {
-            includeProjectLibrary: isLibraryProject,
-            includeAllLibrary: isLibraryProject
-          });
-
-          if (!codeData || !codeData.filesMap || Object.keys(codeData.filesMap).length === 0) {
-            return { success: false, error: 'Could not assemble project files from IndexedDB.' };
-          }
-
-          var headers = {
-            'Authorization': 'token ' + token,
-            'Accept': 'application/vnd.github.v3+json',
-            'Content-Type': 'application/json'
-          };
-
-          var filesMap = codeData.filesMap;
-          var treeItems = [];
-
-          // 1. Create Git Blobs for all project files
-          for (var rawPath in filesMap) {
-            if (!Object.prototype.hasOwnProperty.call(filesMap, rawPath)) continue;
-            var cleanPath = rawPath.replace(/\\/g, '/');
-            if (cleanPath.startsWith(pName + '/')) cleanPath = cleanPath.slice(pName.length + 1);
-            if (!isLibraryProject && cleanPath.startsWith('Library/')) continue;
-
-            var content = filesMap[rawPath] || '';
-            var b64Content = btoa(unescape(encodeURIComponent(content)));
-
-            var blobRes = await fetch('https://api.github.com/repos/' + encodeURIComponent(account) + '/' + encodeURIComponent(remoteName) + '/git/blobs', {
-              method: 'POST',
-              headers: headers,
-              body: JSON.stringify({ content: b64Content, encoding: 'base64' })
-            });
-
-            if (!blobRes.ok) {
-              var blobErr = await blobRes.json();
-              throw new Error('Failed to create Git blob for ' + cleanPath + ': ' + (blobErr.message || blobRes.statusText));
+            var adapter = LunoFileSystem.getAdapter();
+            if (adapter && adapter.write) {
+              await adapter.write('luno.json', JSON.stringify(meta, null, 2) + '\n', pName);
             }
 
-            var blobData = await blobRes.json();
-            treeItems.push({
-              path: cleanPath,
-              mode: '100644',
-              type: 'blob',
-              sha: blobData.sha
-            });
-          }
-
-          // 2. Ensure .nojekyll is included in the tree
-          if (!treeItems.some(function(t) { return t.path === '.nojekyll'; })) {
-            var njBlobRes = await fetch('https://api.github.com/repos/' + encodeURIComponent(account) + '/' + encodeURIComponent(remoteName) + '/git/blobs', {
-              method: 'POST',
-              headers: headers,
-              body: JSON.stringify({ content: '', encoding: 'utf-8' })
-            });
-            if (njBlobRes.ok) {
-              var njBlob = await njBlobRes.json();
-              treeItems.push({ path: '.nojekyll', mode: '100644', type: 'blob', sha: njBlob.sha });
-            }
-          }
-
-          // 3. Resolve parent commit (if branch exists)
-          var latestCommitSha = null;
-          var refRes = await fetch('https://api.github.com/repos/' + encodeURIComponent(account) + '/' + encodeURIComponent(remoteName) + '/git/ref/heads/main', {
-            method: 'GET',
-            headers: headers
-          });
-
-          if (refRes.ok) {
-            var refData = await refRes.json();
-            latestCommitSha = refData.object ? refData.object.sha : null;
-          }
-
-          // 4. Create Git Tree
-          var treePayload = { tree: treeItems };
-          if (latestCommitSha) treePayload.base_tree = latestCommitSha;
-
-          var treeRes = await fetch('https://api.github.com/repos/' + encodeURIComponent(account) + '/' + encodeURIComponent(remoteName) + '/git/trees', {
-            method: 'POST',
-            headers: headers,
-            body: JSON.stringify(treePayload)
-          });
-
-          if (!treeRes.ok) {
-            var treeErr = await treeRes.json();
-            throw new Error('Failed to create Git tree: ' + (treeErr.message || treeRes.statusText));
-          }
-          var treeData = await treeRes.json();
-
-          // 5. Create Git Commit
-          var commitPayload = {
-            message: msg,
-            tree: treeData.sha,
-            parents: latestCommitSha ? [latestCommitSha] : []
-          };
-
-          var commitRes = await fetch('https://api.github.com/repos/' + encodeURIComponent(account) + '/' + encodeURIComponent(remoteName) + '/git/commits', {
-            method: 'POST',
-            headers: headers,
-            body: JSON.stringify(commitPayload)
-          });
-
-          if (!commitRes.ok) {
-            var commitErr = await commitRes.json();
-            throw new Error('Failed to create Git commit: ' + (commitErr.message || commitRes.statusText));
-          }
-          var newCommitData = await commitRes.json();
-
-          // 6. Update or create branch reference
-          if (latestCommitSha) {
-            await fetch('https://api.github.com/repos/' + encodeURIComponent(account) + '/' + encodeURIComponent(remoteName) + '/git/refs/heads/main', {
-              method: 'PATCH',
-              headers: headers,
-              body: JSON.stringify({ sha: newCommitData.sha, force: true })
-            });
-          } else {
-            await fetch('https://api.github.com/repos/' + encodeURIComponent(account) + '/' + encodeURIComponent(remoteName) + '/git/refs', {
-              method: 'POST',
-              headers: headers,
-              body: JSON.stringify({ ref: 'refs/heads/main', sha: newCommitData.sha })
-            });
-          }
-
-          // 7. Trigger GitHub Pages enablement
-          try {
-            await LunoDeployEngine.enableGitHubPages(remoteName);
-          } catch(e) {}
-
-          // 8. Update local checkpoint state
-          try {
-            var postMetaRes = await LunoApiClient.fetchFsRead('luno.json', pName);
-            if (postMetaRes && postMetaRes.content) {
-              var pMeta = JSON.parse(postMetaRes.content);
-              pMeta.processedCountSinceCheckpoint = 0;
-              pMeta.lastCheckpointTime = new Date().toISOString();
-              pMeta.pendingCheckpointDescription = 'Clean working tree';
-              var adapter2 = LunoFileSystem.getAdapter();
-              if (adapter2 && adapter2.write) {
-                await adapter2.write('luno.json', JSON.stringify(pMeta, null, 2) + '\n', pName);
-              }
-            }
             if (typeof ClientApp !== 'undefined') {
               ClientApp.uncommittedCount = 0;
               await ClientApp.fetchCodebaseMetrics(pName);
             }
-          } catch (e) {}
+          } catch(metaErr) {}
 
           return {
             success: true,
-            output: '✅ Pure Browser Deployment Complete!\nCreated 1 atomic commit (' + newCommitData.sha.slice(0, 7) + ') with ' + treeItems.length + ' file(s) on https://github.com/' + account + '/' + remoteName + '\n🌐 Live Site: https://' + account.toLowerCase() + '.github.io/' + remoteName + '/'
+            output: '📸 Recorded local snapshot for [' + pName + '] in IndexedDB storage.\n(Remote GitHub push skipped: Local Snapshot Only mode)'
           };
         }
 
-        // Local Server Deploy Route
-        if (deployToPages && token) {
-          try {
-            await LunoDeployEngine.createRemoteRepoOnGitHub(remoteName);
-          } catch(e) {}
-        }
-
-        if (deployToPages) {
-          await LunoDeployEngine.ensureGitHubPagesParity(pName);
-        }
-
-        var targetRemote = customRemoteUrl || ('git@github.com:' + account + '/' + remoteName + '.git');
-        if (deployToPages) {
-          await LunoDeployEngine.initializeGitRepo(pName, targetRemote);
-        }
-
-        var res = await fetch('/api/deploy?project=' + encodeURIComponent(pName), {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'X-Luno-Client': '1' },
-          body: JSON.stringify({ project: pName, commitMsg: msg, deployToPages: deployToPages })
+        var codeData = await LunoApiClient.fetchAllCode(pName, {
+          includeProjectLibrary: isLibraryProject,
+          includeAllLibrary: isLibraryProject
         });
-        var deployData = await res.json();
 
-        if (deployData && deployData.success && token && deployToPages) {
-          try {
-            await LunoDeployEngine.enableGitHubPages(remoteName);
-          } catch(e) {}
+        if (!codeData || !codeData.filesMap || Object.keys(codeData.filesMap).length === 0) {
+          return { success: false, error: 'Could not assemble project files from storage.' };
         }
 
-        return deployData;
-      } catch (e) {
-        return { success: false, error: e.message };
+        var headers = {
+          'Authorization': 'token ' + token,
+          'Accept': 'application/vnd.github.v3+json',
+          'Content-Type': 'application/json'
+        };
+
+        var filesMap = codeData.filesMap;
+        var treeItems = [];
+
+        for (var rawPath in filesMap) {
+          if (!Object.prototype.hasOwnProperty.call(filesMap, rawPath)) continue;
+          var cleanPath = rawPath.replace(/\\/g, '/');
+          if (cleanPath.startsWith(pName + '/')) cleanPath = cleanPath.slice(pName.length + 1);
+          if (!isLibraryProject && cleanPath.startsWith('Library/')) continue;
+
+          var content = filesMap[rawPath] || '';
+          var b64Content = btoa(unescape(encodeURIComponent(content)));
+
+          var blobRes = await fetch('https://api.github.com/repos/' + encodeURIComponent(account) + '/' + encodeURIComponent(remoteName) + '/git/blobs', {
+            method: 'POST',
+            headers: headers,
+            body: JSON.stringify({ content: b64Content, encoding: 'base64' })
+          });
+
+          if (!blobRes.ok) {
+            var blobErr = await blobRes.json();
+            throw new Error('Failed to create Git blob for ' + cleanPath + ': ' + (blobErr.message || blobRes.statusText));
+          }
+
+          var blobData = await blobRes.json();
+          treeItems.push({
+            path: cleanPath,
+            mode: '100644',
+            type: 'blob',
+            sha: blobData.sha
+          });
+        }
+
+        if (!treeItems.some(function(t) { return t.path === '.nojekyll'; })) {
+          var njBlobRes = await fetch('https://api.github.com/repos/' + encodeURIComponent(account) + '/' + encodeURIComponent(remoteName) + '/git/blobs', {
+            method: 'POST',
+            headers: headers,
+            body: JSON.stringify({ content: '', encoding: 'utf-8' })
+          });
+          if (njBlobRes.ok) {
+            var njBlob = await njBlobRes.json();
+            treeItems.push({ path: '.nojekyll', mode: '100644', type: 'blob', sha: njBlob.sha });
+          }
+        }
+
+        var latestCommitSha = null;
+        var refRes = await fetch('https://api.github.com/repos/' + encodeURIComponent(account) + '/' + encodeURIComponent(remoteName) + '/git/ref/heads/main', {
+          method: 'GET',
+          headers: headers
+        });
+
+        if (refRes.ok) {
+          var refData = await refRes.json();
+          latestCommitSha = refData.object ? refData.object.sha : null;
+        }
+
+        var treePayload = { tree: treeItems };
+        if (latestCommitSha) treePayload.base_tree = latestCommitSha;
+
+        var treeRes = await fetch('https://api.github.com/repos/' + encodeURIComponent(account) + '/' + encodeURIComponent(remoteName) + '/git/trees', {
+          method: 'POST',
+          headers: headers,
+          body: JSON.stringify(treePayload)
+        });
+
+        if (!treeRes.ok) {
+          var treeErr = await treeRes.json();
+          throw new Error('Failed to create Git tree: ' + (treeErr.message || treeRes.statusText));
+        }
+        var treeData = await treeRes.json();
+
+        var commitPayload = {
+          message: msg,
+          tree: treeData.sha,
+          parents: latestCommitSha ? [latestCommitSha] : []
+        };
+
+        var commitRes = await fetch('https://api.github.com/repos/' + encodeURIComponent(account) + '/' + encodeURIComponent(remoteName) + '/git/commits', {
+          method: 'POST',
+          headers: headers,
+          body: JSON.stringify(commitPayload)
+        });
+
+        if (!commitRes.ok) {
+          var commitErr = await commitRes.json();
+          throw new Error('Failed to create Git commit: ' + (commitErr.message || commitRes.statusText));
+        }
+        var newCommitData = await commitRes.json();
+
+        if (latestCommitSha) {
+          await fetch('https://api.github.com/repos/' + encodeURIComponent(account) + '/' + encodeURIComponent(remoteName) + '/git/refs/heads/main', {
+            method: 'PATCH',
+            headers: headers,
+            body: JSON.stringify({ sha: newCommitData.sha, force: true })
+          });
+        } else {
+          await fetch('https://api.github.com/repos/' + encodeURIComponent(account) + '/' + encodeURIComponent(remoteName) + '/git/refs', {
+            method: 'POST',
+            headers: headers,
+            body: JSON.stringify({ ref: 'refs/heads/main', sha: newCommitData.sha })
+          });
+        }
+
+        try {
+          await LunoDeployEngine.enableGitHubPages(remoteName);
+        } catch(e) {}
+
+        try {
+          var postMetaRes = await LunoApiClient.fetchFsRead('luno.json', pName);
+          if (postMetaRes && postMetaRes.content) {
+            var pMeta = JSON.parse(postMetaRes.content);
+            pMeta.processedCountSinceCheckpoint = 0;
+            pMeta.lastCheckpointTime = new Date().toISOString();
+            pMeta.pendingCheckpointDescription = 'Clean working tree';
+            var adapter2 = LunoFileSystem.getAdapter();
+            if (adapter2 && adapter2.write) {
+              await adapter2.write('luno.json', JSON.stringify(pMeta, null, 2) + '\n', pName);
+            }
+          }
+          if (typeof ClientApp !== 'undefined') {
+            ClientApp.uncommittedCount = 0;
+            await ClientApp.fetchCodebaseMetrics(pName);
+          }
+        } catch (e) {}
+
+        return {
+          success: true,
+          output: '✅ Pure Browser Deployment Complete!\nCreated 1 atomic commit (' + newCommitData.sha.slice(0, 7) + ') with ' + treeItems.length + ' file(s) on https://github.com/' + account + '/' + remoteName + '\n🌐 Live Site: https://' + account.toLowerCase() + '.github.io/' + remoteName + '/'
+        };
       }
+
+      // Local Node Server Deploy Route
+      if (deployToPages) {
+        await LunoDeployEngine.ensureGitHubPagesParity(pName);
+      }
+
+      var targetRemote = customRemoteUrl || ('git@github.com:' + account + '/' + remoteName + '.git');
+      if (deployToPages) {
+        await LunoDeployEngine.initializeGitRepo(pName, targetRemote);
+      }
+
+      var res = await fetch('/api/deploy?project=' + encodeURIComponent(pName), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Luno-Client': '1' },
+        body: JSON.stringify({ project: pName, commitMsg: msg, deployToPages: deployToPages })
+      });
+      var deployData = await res.json();
+
+      if (deployData && deployData.success && token && deployToPages) {
+        try {
+          await LunoDeployEngine.enableGitHubPages(remoteName);
+        } catch(e) {}
+      }
+
+      return deployData;
+    } catch (e) {
+      return { success: false, error: e.message };
+    }
   }
   static async mountUI(container) {
       if (!container) return;
