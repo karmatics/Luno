@@ -48,53 +48,59 @@ class LunoIndexedDbAdapter {
         req.onerror = (e) => reject(e.target.error);
       });
   }
+
   static async loadProjectManifest(projectName) {
-    const proj = projectName || (typeof ClientApp !== 'undefined' && ClientApp.getTargetProject ? ClientApp.getTargetProject() : 'Luno');
-    if (LunoIndexedDbAdapter.manifestCache.has(proj)) {
-      return LunoIndexedDbAdapter.manifestCache.get(proj);
-    }
+      const proj = projectName || (typeof ClientApp !== 'undefined' && ClientApp.getTargetProject ? ClientApp.getTargetProject() : 'Luno');
+      if (LunoIndexedDbAdapter.manifestCache.has(proj)) {
+        return LunoIndexedDbAdapter.manifestCache.get(proj);
+      }
 
-    try {
-      const lunoUrl = (typeof LunoFileSystem !== 'undefined' && LunoFileSystem.resolveStaticUrl)
-        ? LunoFileSystem.resolveStaticUrl('luno.json', proj)
-        : './luno.json';
-      const res = await fetch(lunoUrl);
-      if (res.ok) {
-        const text = await res.text();
-        const trimmed = text.trim();
-        if (!trimmed.startsWith('<') && !trimmed.startsWith('<!DOCTYPE')) {
-          const meta = JSON.parse(text);
-          const discovered = new Set(['luno.json', 'index.html']);
+      try {
+        const lunoUrl = (typeof LunoFileSystem !== 'undefined' && LunoFileSystem.resolveStaticUrl)
+          ? LunoFileSystem.resolveStaticUrl('luno.json', proj)
+          : './luno.json';
+        const res = await fetch(lunoUrl);
+        if (res.ok) {
+          const text = await res.text();
+          const trimmed = text.trim();
+          if (!trimmed.startsWith('<') && !trimmed.startsWith('<!DOCTYPE')) {
+            const meta = JSON.parse(text);
 
-          [].concat(meta.main || []).forEach(p => discovered.add(p));
-          [].concat(meta.styles || []).forEach(p => discovered.add(p));
-          [].concat(meta.docs || []).forEach(p => discovered.add(p));
-          [].concat(meta.files || []).forEach(p => discovered.add(p));
-          [].concat(meta.library || []).forEach(p => discovered.add('Library/' + p.replace(/^(?:Library|library)\//, '')));
+            // Discard if wrong project manifest was fetched
+            if (proj !== 'Luno' && (meta.name === 'Luno' || (meta.entrypoint && meta.entrypoint.class === 'ClientApp'))) {
+              return null;
+            }
 
-          if (meta.entrypoint && meta.entrypoint.file) discovered.add(meta.entrypoint.file);
+            const discovered = new Set(['luno.json', 'index.html']);
 
-          const items = Array.from(discovered).map(filePath => {
-            const cleanPath = filePath.replace(/\\/g, '/').replace(/^\/+/, '').replace(new RegExp('^' + proj + '/'), '');
-            return {
-              name: cleanPath.split('/').pop(),
-              path: cleanPath,
-              size: 1024,
-              mtimeMs: Date.now()
-            };
-          });
+            [].concat(meta.main || []).forEach(p => discovered.add(p));
+            [].concat(meta.styles || []).forEach(p => discovered.add(p));
+            [].concat(meta.docs || []).forEach(p => discovered.add(p));
+            [].concat(meta.files || []).forEach(p => discovered.add(p));
+            [].concat(meta.library || []).forEach(p => discovered.add('Library/' + p.replace(/^(?:Library|library)\//, '')));
 
-          if (items.length > 0) {
-            LunoIndexedDbAdapter.manifestCache.set(proj, items);
-            return items;
+            if (meta.entrypoint && meta.entrypoint.file) discovered.add(meta.entrypoint.file);
+
+            const items = Array.from(discovered).map(filePath => {
+              const cleanPath = filePath.replace(/\\/g, '/').replace(/^\/+/, '').replace(new RegExp('^' + proj + '/'), '');
+              return {
+                name: cleanPath.split('/').pop(),
+                path: cleanPath,
+                size: 1024,
+                mtimeMs: Date.now()
+              };
+            });
+
+            if (items.length > 0) {
+              LunoIndexedDbAdapter.manifestCache.set(proj, items);
+              return items;
+            }
           }
         }
-      }
-    } catch(e) {}
+      } catch(e) {}
 
-    return null;
-  }
-
+      return null;
+    }
   static normalizeKey(filePath, projectName) {
       let clean = (filePath || '').replace(/\\/g, '/').replace(/^\/+/, '').trim();
       if (clean.startsWith('Luno Workspace/')) clean = clean.slice(15).trim();
@@ -106,29 +112,55 @@ class LunoIndexedDbAdapter {
       if (clean.startsWith('Library/') || clean.startsWith('library/')) {
         proj = 'Library';
         clean = clean.replace(/^(?:Library|library)\//, '');
-      } else if (clean.startsWith(proj + '/')) {
-        clean = clean.slice(proj.length + 1);
+      } else {
+        const firstSlash = clean.indexOf('/');
+        if (firstSlash !== -1) {
+          const firstSeg = clean.slice(0, firstSlash);
+          const knownSiblings = [
+            'vibes', 'aardvarkBookmarklet', 'AardvarkExtension', 'AardvarkPlaylist', 'AlphabetGame',
+            'Basic3D', 'BasicsWithDialogBox', 'BookmarkletWorkshop', 'BulbAndButton', 'Calculator',
+            'Es6Converter', 'LegoDetective', 'LunoParser', 'LunoTests', 'MathStorm', 'Penrose', 'PleasureAndPain',
+            'RobotDividend', 'SvgStudio', 'TriBlob', 'ValuationOfAccudraw', 'accuCad', 'accudraw',
+            'guessTheNoteGame', 'situation', 'squircle', 'Squircle', 'teacup', 'Library', 'Luno'
+          ];
+          if (knownSiblings.includes(firstSeg) || (proj && firstSeg.toLowerCase() === proj.toLowerCase())) {
+            proj = firstSeg;
+            clean = clean.slice(firstSlash + 1);
+          }
+        }
+        if (clean.startsWith(proj + '/')) {
+          clean = clean.slice(proj.length + 1);
+        }
       }
 
       return { id: proj + '::' + clean, project: proj, path: clean };
-  }
-  static async read(filePath, projectName) {
-    const db = await LunoIndexedDbAdapter.getDb();
-    const key = LunoIndexedDbAdapter.normalizeKey(filePath, projectName);
-    return new Promise((resolve) => {
-      const tx = db.transaction(LunoIndexedDbAdapter.STORE_FILES, 'readonly');
-      const req = tx.objectStore(LunoIndexedDbAdapter.STORE_FILES).get(key.id);
-      req.onsuccess = () => {
-        if (req.result) {
-          resolve({ success: true, content: req.result.content, size: req.result.content.length });
-        } else {
-          resolve({ success: false, error: 'File not found in IndexedDB: ' + key.path });
-        }
-      };
-      req.onerror = () => resolve({ success: false, error: 'Read error' });
-    });
-  }
+    }
 
+  static async read(filePath, projectName) {
+      const db = await LunoIndexedDbAdapter.getDb();
+      const key = LunoIndexedDbAdapter.normalizeKey(filePath, projectName);
+      return new Promise((resolve) => {
+        const tx = db.transaction(LunoIndexedDbAdapter.STORE_FILES, 'readonly');
+        const req = tx.objectStore(LunoIndexedDbAdapter.STORE_FILES).get(key.id);
+        req.onsuccess = () => {
+          if (req.result) {
+            // Self-healing guard: If a sibling project's luno.json was poisoned with Luno's manifest, reject it so the clean remote manifest is fetched
+            if (key.path === 'luno.json' && key.project && key.project !== 'Luno') {
+              try {
+                const meta = JSON.parse(req.result.content);
+                if (meta.name === 'Luno' || (meta.entrypoint && meta.entrypoint.class === 'ClientApp')) {
+                  return resolve({ success: false, error: 'Poisoned manifest cache detected' });
+                }
+              } catch(e) {}
+            }
+            resolve({ success: true, content: req.result.content, size: req.result.content.length });
+          } else {
+            resolve({ success: false, error: 'File not found in IndexedDB: ' + key.path });
+          }
+        };
+        req.onerror = () => resolve({ success: false, error: 'Read error' });
+      });
+    }
   static async write(filePath, content, projectName) {
     const db = await LunoIndexedDbAdapter.getDb();
     const key = LunoIndexedDbAdapter.normalizeKey(filePath, projectName);
@@ -805,35 +837,47 @@ class LunoFileSystem {
   }
 
   static normalizeRelativePath(filePath, projectName) {
-    if (!filePath || typeof filePath !== 'string') return '';
-    let clean = filePath.replace(/\\/g, '/').replace(/^\/+/, '').trim();
-    if (clean.startsWith('Luno Workspace/')) clean = clean.slice(15).trim();
-    if (clean.startsWith('./')) clean = clean.slice(2).trim();
+      if (!filePath || typeof filePath !== 'string') return '';
+      let clean = filePath.replace(/\\/g, '/').replace(/^\/+/, '').trim();
+      if (clean.startsWith('Luno Workspace/')) clean = clean.slice(15).trim();
+      if (clean.startsWith('./')) clean = clean.slice(2).trim();
 
-    const proj = projectName || (typeof ClientApp !== 'undefined' && ClientApp.getTargetProject ? ClientApp.getTargetProject() : 'Luno');
+      const proj = projectName || (typeof ClientApp !== 'undefined' && ClientApp.getTargetProject ? ClientApp.getTargetProject() : 'Luno');
 
-    if (LunoFileSystem.isStaticHosting()) {
-      if (clean.startsWith(proj + '/')) {
-        clean = clean.slice(proj.length + 1);
+      if (LunoFileSystem.isStaticHosting()) {
+        if (proj && clean.startsWith(proj + '/')) {
+          clean = clean.slice(proj.length + 1);
+        }
+        if (proj === 'Luno' && clean.startsWith('Luno/')) {
+          clean = clean.slice(5);
+        }
       }
-      if (clean.startsWith('Luno/')) {
-        clean = clean.slice(5);
-      }
+      return clean;
     }
-    return clean;
-  }
 
   static resolveStaticUrl(filePath, projectName) {
-      const clean = LunoFileSystem.normalizeRelativePath(filePath, projectName);
+      const proj = projectName || (typeof ClientApp !== 'undefined' && ClientApp.getTargetProject ? ClientApp.getTargetProject() : 'Luno');
+      const clean = LunoFileSystem.normalizeRelativePath(filePath, proj);
+
       if (!clean.startsWith('./') && !clean.startsWith('../') && !clean.startsWith('http://') && !clean.startsWith('https://')) {
         if (LunoFileSystem.isStaticHosting()) {
-          const isLib = clean.startsWith('Library/') || clean.startsWith('library/') || projectName === 'Library';
+          const isLib = clean.startsWith('Library/') || clean.startsWith('library/') || proj === 'Library';
+          const account = (typeof LunoDeployEngine !== 'undefined' && LunoDeployEngine.getGithubAccount)
+            ? LunoDeployEngine.getGithubAccount()
+            : 'karmatics';
+
           if (isLib) {
             const cleanLib = clean.replace(/^(?:Library|library)\//, '');
-            const account = (typeof LunoDeployEngine !== 'undefined' && LunoDeployEngine.getGithubAccount)
-              ? LunoDeployEngine.getGithubAccount()
-              : 'karmatics';
             return 'https://' + account.toLowerCase() + '.github.io/Library/' + cleanLib;
+          }
+
+          // Luno is the exception: hosted under /Luno/ (the current site root on GitHub Pages)
+          // Sibling projects are deployed to their own dedicated repos: https://[account].github.io/[repo]/
+          if (proj && proj !== 'Luno') {
+            const remoteRepo = (typeof LunoDeployEngine !== 'undefined' && LunoDeployEngine.getRemoteRepoName)
+              ? LunoDeployEngine.getRemoteRepoName(proj)
+              : proj;
+            return 'https://' + account.toLowerCase() + '.github.io/' + remoteRepo + '/' + clean;
           }
         }
         return './' + clean;

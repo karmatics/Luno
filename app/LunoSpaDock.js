@@ -52,13 +52,23 @@ class LunoSpaDock {
         ].join('\n');
       }
 
-      var filesMap = codeData.filesMap;
+      var filesMap = codeData.filesMap || {};
       var lunoMeta = {};
 
-      for (var fKey in filesMap) {
-        if (fKey.endsWith('luno.json')) {
-          try { lunoMeta = JSON.parse(filesMap[fKey]); } catch (e) {}
-          break;
+      var targetMetaKey = (pName ? pName + '/' : '') + 'luno.json';
+      if (filesMap[targetMetaKey]) {
+        try { lunoMeta = JSON.parse(filesMap[targetMetaKey]); } catch (e) {}
+      } else {
+        for (var fKey in filesMap) {
+          if (fKey.endsWith('luno.json')) {
+            try {
+              var candidate = JSON.parse(filesMap[fKey]);
+              if (!pName || candidate.name !== 'Luno' || pName === 'Luno') {
+                lunoMeta = candidate;
+                break;
+              }
+            } catch (e) {}
+          }
         }
       }
 
@@ -79,8 +89,14 @@ class LunoSpaDock {
       }
 
       var entrypoint = lunoMeta.entrypoint || {};
-      var entryClass = entrypoint.class || lunoMeta.mainClass || 'App';
-      var entryMethod = entrypoint.method || 'run';
+      var entryClass = entrypoint.class || lunoMeta.mainClass || (pName === 'Luno' ? 'ClientApp' : 'App');
+      var entryMethod = entrypoint.method || (entryClass === 'ClientApp' ? 'init' : 'run');
+
+      // Strict guard: Sibling apps must never attempt to load Luno's ClientApp class
+      if (pName && pName !== 'Luno' && entryClass === 'ClientApp') {
+        entryClass = lunoMeta.mainClass || (typeof LunoIndexedDbAdapter !== 'undefined' ? LunoIndexedDbAdapter.toPascalCase(pName) : 'App');
+        entryMethod = 'run';
+      }
 
       var bootScript = [
         '<script>',
@@ -120,7 +136,7 @@ class LunoSpaDock {
         '</body>',
         '</html>'
       ].join('\n');
-  }
+    }
   static async reloadActivePreviewIframe(projectName) {
     var pName = projectName || (typeof ClientApp !== 'undefined' && ClientApp.getTargetProject ? ClientApp.getTargetProject() : '');
     if (!pName) return;

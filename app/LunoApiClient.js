@@ -141,7 +141,23 @@ class LunoApiClient {
         const adapter = LunoFileSystem.getAdapter();
         if (adapter && adapter.read) {
           const r = await adapter.read(cleanFile, effectiveProject);
-          if (r.success) return r;
+          if (r.success) {
+            // Check for poisoned manifest
+            if (cleanFile.endsWith('luno.json') && effectiveProject && effectiveProject !== 'Luno') {
+              try {
+                const meta = JSON.parse(r.content);
+                if (meta.name === 'Luno' || (meta.entrypoint && meta.entrypoint.class === 'ClientApp')) {
+                  // Poisoned manifest: drop through to fetch clean remote file
+                } else {
+                  return r;
+                }
+              } catch(e) {
+                return r;
+              }
+            } else {
+              return r;
+            }
+          }
         }
         try {
           const fetchUrl = (typeof LunoFileSystem !== 'undefined' && LunoFileSystem.resolveStaticUrl)
