@@ -144,12 +144,14 @@ class LunoIndexedDbAdapter {
         const req = tx.objectStore(LunoIndexedDbAdapter.STORE_FILES).get(key.id);
         req.onsuccess = () => {
           if (req.result) {
-            // Self-healing guard: If a sibling project's luno.json was poisoned with Luno's manifest, reject it so the clean remote manifest is fetched
+            // Self-healing guard: If a sibling project's luno.json was poisoned with Luno's manifest, discard it immediately
             if (key.path === 'luno.json' && key.project && key.project !== 'Luno') {
               try {
                 const meta = JSON.parse(req.result.content);
                 if (meta.name === 'Luno' || (meta.entrypoint && meta.entrypoint.class === 'ClientApp')) {
-                  return resolve({ success: false, error: 'Poisoned manifest cache detected' });
+                  const delTx = db.transaction(LunoIndexedDbAdapter.STORE_FILES, 'readwrite');
+                  delTx.objectStore(LunoIndexedDbAdapter.STORE_FILES).delete(key.id);
+                  return resolve({ success: false, error: 'Poisoned manifest cache purged' });
                 }
               } catch(e) {}
             }
@@ -871,7 +873,7 @@ class LunoFileSystem {
             return 'https://' + account.toLowerCase() + '.github.io/Library/' + cleanLib;
           }
 
-          // Luno is the exception: hosted under /Luno/ (the current site root on GitHub Pages)
+          // Luno is the exception: on GitHub Pages it is hosted at /Luno/ (the current site root).
           // Sibling projects are deployed to their own dedicated repos: https://[account].github.io/[repo]/
           if (proj && proj !== 'Luno') {
             const remoteRepo = (typeof LunoDeployEngine !== 'undefined' && LunoDeployEngine.getRemoteRepoName)
