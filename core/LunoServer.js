@@ -498,12 +498,14 @@ class LunoServer {
         let commitMsg = 'Automated deployment from Luno Workspace';
         let targetProj = (url && url.searchParams && url.searchParams.get('project')) || '';
         let deployToPages = true;
+        let clientToken = '';
 
         try {
           const parsed = JSON.parse(body || '{}');
           if (parsed.commitMsg) commitMsg = parsed.commitMsg;
           if (parsed.project) targetProj = parsed.project;
           if (parsed.deployToPages !== undefined) deployToPages = Boolean(parsed.deployToPages);
+          if (parsed.token) clientToken = parsed.token;
         } catch(e) {}
 
         const targetDir = LunoServer.resolveProjectBaseDir(targetProj);
@@ -512,6 +514,18 @@ class LunoServer {
         if (!fs.existsSync(targetDir)) {
           return LunoServer.sendJSON(res, 404, { success: false, error: 'Project directory not found: ' + targetDir });
         }
+
+        const pName = path.basename(targetDir);
+        let remoteName = pName;
+        let account = 'karmatics';
+
+        try {
+          const lunoJsonPath = path.join(LunoServer.getRootDir(), 'luno.json');
+          if (fs.existsSync(lunoJsonPath)) {
+            const lMeta = JSON.parse(fs.readFileSync(lunoJsonPath, 'utf8'));
+            if (lMeta.githubAccount) account = lMeta.githubAccount;
+          }
+        } catch (e) {}
 
         if (!fs.existsSync(path.join(targetDir, '.git'))) {
           try {
@@ -522,6 +536,18 @@ class LunoServer {
         const lockFile = path.join(targetDir, '.git', 'index.lock');
         if (fs.existsSync(lockFile)) {
           try { fs.unlinkSync(lockFile); } catch(e){}
+        }
+
+        // Configure origin remote
+        try {
+          const existingRemote = execSync('git remote get-url origin 2>&1', { cwd: targetDir, encoding: 'utf8' }).trim();
+          if (!existingRemote || existingRemote.includes('fatal:')) {
+            execSync(`git remote add origin git@github.com:${account}/${remoteName}.git`, { cwd: targetDir, encoding: 'utf8' });
+          }
+        } catch(e) {
+          try {
+            execSync(`git remote add origin git@github.com:${account}/${remoteName}.git`, { cwd: targetDir, encoding: 'utf8' });
+          } catch(e2) {}
         }
 
         const envOpts = {
@@ -565,7 +591,6 @@ class LunoServer {
             } catch(e) {}
           }
 
-          // Only push to remote origin when deploying to GitHub Pages
           if (deployToPages) {
             output += '\n$ git push origin main\n';
             try {
@@ -573,11 +598,53 @@ class LunoServer {
               output += (pushOut.trim() || 'Everything up-to-date') + '\n';
             } catch(pushErr) {
               const errDetail = (pushErr.stdout || '') + (pushErr.stderr || pushErr.message || '');
-              output += errDetail.trim() + '\n';
+
+              // If repository does not exist on GitHub, auto-create it now
+              if (errDetail.includes('Repository not found') || errDetail.includes('Could not read from remote repository')) {
+                output += '⚠️ Remote repository missing on GitHub. Auto-creating...\n';
+
+                let autoCreated = false;
+                let token = clientToken || process.env.GITHUB_TOKEN || process.env.GH_TOKEN || '';
+
+                if (!token) {
+                  const ghHostsPath = path.join(process.env.HOME || '', '.config', 'gh', 'hosts.yml');
+                  if (fs.existsSync(ghHostsPath)) {
+                    try {
+                      const m = fs.readFileSync(ghHostsPath, 'utf8').match(/oauth_token:\s*([^\s]+)/);
+                      if (m) token = m[1].trim();
+                    } catch(e) {}
+                  }
+                }
+
+                if (token) {
+                  try {
+                    const curlCmd = `curl -s -X POST -H "Authorization: Bearer ${token}" -H "Accept: application/vnd.github.v3+json" -H "User-Agent: LunoWorkspace" https://api.github.com/user/repos -d '{"name":"${remoteName}","private":false}'`;
+                    execSync(curlCmd, { encoding: 'utf8' });
+                    output += `✅ Auto-created github.com/${account}/${remoteName} via GitHub API\n`;
+                    autoCreated = true;
+                  } catch(apiE) {
+                    try {
+                      const curlOrg = `curl -s -X POST -H "Authorization: Bearer ${token}" -H "Accept: application/vnd.github.v3+json" -H "User-Agent: LunoWorkspace" https://api.github.com/orgs/${account}/repos -d '{"name":"${remoteName}","private":false}'`;
+                      execSync(curlOrg, { encoding: 'utf8' });
+                      output += `✅ Auto-created github.com/${account}/${remoteName} via Organization API\n`;
+                      autoCreated = true;
+                    } catch(orgE) {}
+                  }
+                }
+
+                // Retry push
+                try {
+                  const retryPush = execSync('git push -u origin main 2>&1', envOpts) || '';
+                  output += (retryPush.trim() || 'Push succeeded') + '\n';
+                } catch(retryErr) {
+                  output += ((retryErr.stdout || '') + (retryErr.stderr || retryErr.message || '')).trim() + '\n';
+                }
+              } else {
+                output += errDetail.trim() + '\n';
+              }
             }
           }
 
-          // Include commit verification log with stats
           try {
             const statOut = execSync('git log -1 --stat --oneline 2>&1', envOpts);
             if (statOut && statOut.trim()) {
@@ -587,7 +654,7 @@ class LunoServer {
 
           return LunoServer.sendJSON(res, 200, {
             success: true,
-            project: path.basename(targetDir),
+            project: pName,
             deployToPages: deployToPages,
             output: output.trim()
           });
@@ -603,7 +670,6 @@ class LunoServer {
       }
     });
   }
-
   
   static handleProjectsList(req, res) {
     const activeRoot = LunoServer.getRootDir();

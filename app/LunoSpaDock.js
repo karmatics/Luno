@@ -186,180 +186,185 @@ class LunoSpaDock {
   }
 
   static async mountView(viewKey) {
-      let effectiveKey = viewKey || 'workspace';
-      if (effectiveKey === 'deploy') effectiveKey = 'projects';
+    let effectiveKey = viewKey || 'workspace';
 
-      LunoSpaDock.activeDockView = effectiveKey;
-      if (typeof localStorage !== 'undefined') {
-        try { localStorage.setItem('luno_active_dock_view', effectiveKey); } catch (e) {}
+    // Library has no preview app; keep it on workspace
+    if (effectiveKey === 'app_Library' || effectiveKey === 'app_library') {
+      effectiveKey = 'workspace';
+    }
+
+    LunoSpaDock.activeDockView = effectiveKey;
+    if (typeof localStorage !== 'undefined') {
+      try { localStorage.setItem('luno_active_dock_view', effectiveKey); } catch (e) {}
+    }
+    var mainApp = document.getElementById('app-root') || document.body;
+    if (!mainApp) return;
+
+    if (!LunoSpaDock._iframeCache) {
+      LunoSpaDock._iframeCache = {};
+    }
+
+    var persistentAppRoot = document.getElementById('luno-persistent-app-root');
+    if (!persistentAppRoot) {
+      persistentAppRoot = document.createElement('div');
+      persistentAppRoot.id = 'luno-persistent-app-root';
+      persistentAppRoot.style.cssText = 'display:none; position:fixed; z-index:8000; box-sizing:border-box;';
+      document.body.appendChild(persistentAppRoot);
+    }
+
+    var isAppView = effectiveKey.startsWith('app_') || effectiveKey === 'app';
+
+    if (!isAppView) {
+      persistentAppRoot.style.display = 'none';
+      Object.values(LunoSpaDock._iframeCache).forEach(function(holder) {
+        if (holder && holder.style) holder.style.display = 'none';
+      });
+
+      if (effectiveKey === 'workspace') {
+        if (typeof ClientAppUI !== 'undefined') {
+          ClientAppUI.renderOutboxFirstLayout(mainApp);
+        }
+        return;
       }
-      var mainApp = document.getElementById('app-root') || document.body;
-      if (!mainApp) return;
+    }
 
-      if (!LunoSpaDock._iframeCache) {
-        LunoSpaDock._iframeCache = {};
+    mainApp.innerHTML = '';
+    mainApp.style.width = '100%';
+    mainApp.style.maxWidth = '100%';
+
+    var container = document.createElement('div');
+    container.id = 'luno-spa-view-container';
+    var padStyle = isAppView ? '0.35rem 0.65rem 0 0.65rem' : '0.6rem 1.25rem';
+    container.style.cssText = 'font-family:monospace; padding:' + padStyle + '; width:100%; max-width:100%; margin:0; min-height:100vh; background:#0d1117; color:#c9d1d9; box-sizing:border-box;';
+
+    var targetProj = '';
+    if (isAppView) {
+      if (effectiveKey.startsWith('app_')) {
+        targetProj = effectiveKey.replace(/^app_/, '');
+      } else {
+        targetProj = (typeof ClientApp !== 'undefined' && ClientApp.getTargetProject) ? ClientApp.getTargetProject() : 'Luno';
       }
 
-      var persistentAppRoot = document.getElementById('luno-persistent-app-root');
-      if (!persistentAppRoot) {
-        persistentAppRoot = document.createElement('div');
-        persistentAppRoot.id = 'luno-persistent-app-root';
-        persistentAppRoot.style.cssText = 'display:none; position:fixed; z-index:8000; box-sizing:border-box;';
-        document.body.appendChild(persistentAppRoot);
+      var invalidNames = ['web', 'storage', 'emulated', 'LunoWeb', '0', 'Library'];
+      if (!targetProj || invalidNames.includes(targetProj)) {
+        targetProj = 'Luno';
       }
 
-      var isAppView = effectiveKey.startsWith('app_') || effectiveKey === 'app';
+      if (typeof ClientApp !== 'undefined' && ClientApp.setTargetProject) {
+        ClientApp.setTargetProject(targetProj, { openTab: true });
+      }
+    }
 
-      if (!isAppView) {
-        persistentAppRoot.style.display = 'none';
-        Object.values(LunoSpaDock._iframeCache).forEach(function(holder) {
-          if (holder && holder.style) holder.style.display = 'none';
+    var navBar = LunoSpaDock.renderHeaderNav(effectiveKey);
+    var contentArea = document.createElement('div');
+    contentArea.id = 'luno-spa-content-area';
+    contentArea.style.cssText = 'width:100%; min-height:82vh; position:relative;';
+
+    container.appendChild(navBar);
+    container.appendChild(contentArea);
+    mainApp.appendChild(container);
+
+    if (isAppView && targetProj) {
+      var isStatic = (typeof LunoFileSystem !== 'undefined' && LunoFileSystem.getActiveMode() !== 'server') || (typeof LunoLoader !== 'undefined' && LunoLoader.isStaticHosting());
+      var toolbar = document.createElement('div');
+      toolbar.id = 'luno-app-preview-toolbar';
+      toolbar.style.cssText = 'display:flex; justify-content:space-between; align-items:center; background:#161b22; border:1px solid #30363d; border-radius:8px; padding:0.4rem 0.75rem; margin-bottom:0.4rem; flex-wrap:wrap; gap:0.4rem; font-family:monospace;';
+
+      var leftInfo = document.createElement('div');
+      leftInfo.style.cssText = 'display:flex; align-items:center; gap:0.4rem; font-size:0.8rem;';
+      leftInfo.innerHTML = '<span style="color:#00f2fe; font-weight:bold;">📱 App Preview:</span> <span style="color:#3fb950; font-weight:bold;">' + targetProj + '</span>';
+
+      var btnRow = document.createElement('div');
+      btnRow.style.cssText = 'display:flex; gap:0.4rem; align-items:center; flex-wrap:wrap;';
+
+      var btnReload = document.createElement('button');
+      btnReload.style.cssText = 'padding:0.3rem 0.65rem; background:#21262d; color:#00f2fe; border:1px solid #00f2fe; border-radius:6px; cursor:pointer; font-size:0.75rem; font-weight:bold; font-family:monospace;';
+      btnReload.innerHTML = '🔄 Reload';
+      btnReload.title = 'Reload app preview iframe';
+      btnReload.onclick = function() {
+        LunoSpaDock.reloadActivePreviewIframe(targetProj);
+        if (typeof ClientApp !== 'undefined' && ClientApp.showToast) {
+          ClientApp.showToast('Refreshed [' + targetProj + '] preview!', 'info', '🔄');
+        }
+      };
+
+      var btnPopOut = document.createElement('button');
+      btnPopOut.style.cssText = 'padding:0.3rem 0.65rem; background:#271052; color:#d2a8ff; border:1px solid #8257e5; border-radius:6px; cursor:pointer; font-size:0.75rem; font-weight:bold; font-family:monospace;';
+      btnPopOut.innerHTML = '↗ Pop Out Tab';
+      btnPopOut.title = 'Open live in-memory preview in full standalone window';
+      btnPopOut.onclick = async function() {
+        try {
+          var htmlContent = await LunoSpaDock.generateVirtualPreviewHtml(targetProj);
+          var blob = new Blob([htmlContent], { type: 'text/html' });
+          var url = URL.createObjectURL(blob);
+          window.open(url, '_blank');
+        } catch(e) {
+          alert('Could not pop out preview: ' + e.message);
+        }
+      };
+
+      var btnNewTab = document.createElement('button');
+      btnNewTab.style.cssText = 'padding:0.3rem 0.65rem; background:#238636; color:#fff; border:none; border-radius:6px; cursor:pointer; font-size:0.75rem; font-weight:bold; font-family:monospace; box-shadow:0 2px 8px rgba(35,134,54,0.3);';
+      btnNewTab.innerHTML = isStatic ? '🌐 Live Pages Site' : '🖥️ Standalone URL';
+      btnNewTab.title = isStatic ? 'Open live deployed GitHub Pages repository site' : 'Open app via local server port';
+      btnNewTab.onclick = function() {
+        if (!isStatic) {
+          window.open('/' + encodeURIComponent(targetProj) + '/', '_blank');
+        } else {
+          var remoteRepo = (typeof LunoDeployEngine !== 'undefined') ? LunoDeployEngine.getRemoteRepoName(targetProj) : targetProj;
+          var account = (typeof LunoDeployEngine !== 'undefined' && LunoDeployEngine.getGithubAccount) ? LunoDeployEngine.getGithubAccount() : 'karmatics';
+          window.open('https://' + account.toLowerCase() + '.github.io/' + remoteRepo + '/', '_blank');
+        }
+      };
+
+      btnRow.appendChild(btnReload);
+      btnRow.appendChild(btnPopOut);
+      btnRow.appendChild(btnNewTab);
+      toolbar.appendChild(leftInfo);
+      toolbar.appendChild(btnRow);
+      contentArea.appendChild(toolbar);
+
+      persistentAppRoot.style.display = 'block';
+
+      if (!LunoSpaDock._hasResizeListener) {
+        LunoSpaDock._hasResizeListener = true;
+        window.addEventListener('resize', function() {
+          LunoSpaDock.syncAppPreviewLayout();
         });
-
-        if (effectiveKey === 'workspace') {
-          if (typeof ClientAppUI !== 'undefined') {
-            ClientAppUI.renderOutboxFirstLayout(mainApp);
-          }
-          return;
-        }
       }
 
-      mainApp.innerHTML = '';
-      mainApp.style.width = '100%';
-      mainApp.style.maxWidth = '100%';
+      LunoSpaDock.syncAppPreviewLayout();
+      setTimeout(function() { LunoSpaDock.syncAppPreviewLayout(); }, 60);
 
-      var container = document.createElement('div');
-      container.id = 'luno-spa-view-container';
-      var padStyle = isAppView ? '0.35rem 0.65rem 0 0.65rem' : '0.6rem 1.25rem';
-      container.style.cssText = 'font-family:monospace; padding:' + padStyle + '; width:100%; max-width:100%; margin:0; min-height:100vh; background:#0d1117; color:#c9d1d9; box-sizing:border-box;';
-
-      var targetProj = '';
-      if (isAppView) {
-        if (effectiveKey.startsWith('app_')) {
-          targetProj = effectiveKey.replace(/^app_/, '');
-        } else {
-          targetProj = (typeof ClientApp !== 'undefined' && ClientApp.getTargetProject) ? ClientApp.getTargetProject() : 'Luno';
-        }
-
-        var invalidNames = ['web', 'storage', 'emulated', 'LunoWeb', '0', 'Library'];
-        if (!targetProj || invalidNames.includes(targetProj)) {
-          targetProj = 'Luno';
-        }
-
-        if (typeof ClientApp !== 'undefined' && ClientApp.setTargetProject) {
-          ClientApp.setTargetProject(targetProj, { openTab: true });
-        }
-      }
-
-      var navBar = LunoSpaDock.renderHeaderNav(effectiveKey);
-      var contentArea = document.createElement('div');
-      contentArea.id = 'luno-spa-content-area';
-      contentArea.style.cssText = 'width:100%; min-height:82vh; position:relative;';
-
-      container.appendChild(navBar);
-      container.appendChild(contentArea);
-      mainApp.appendChild(container);
-
-      if (isAppView && targetProj) {
-        var isStatic = (typeof LunoFileSystem !== 'undefined' && LunoFileSystem.getActiveMode() !== 'server') || (typeof LunoLoader !== 'undefined' && LunoLoader.isStaticHosting());
-        var toolbar = document.createElement('div');
-        toolbar.id = 'luno-app-preview-toolbar';
-        toolbar.style.cssText = 'display:flex; justify-content:space-between; align-items:center; background:#161b22; border:1px solid #30363d; border-radius:8px; padding:0.4rem 0.75rem; margin-bottom:0.4rem; flex-wrap:wrap; gap:0.4rem; font-family:monospace;';
-
-        var leftInfo = document.createElement('div');
-        leftInfo.style.cssText = 'display:flex; align-items:center; gap:0.4rem; font-size:0.8rem;';
-        leftInfo.innerHTML = '<span style="color:#00f2fe; font-weight:bold;">📱 App Preview:</span> <span style="color:#3fb950; font-weight:bold;">' + targetProj + '</span>';
-
-        var btnRow = document.createElement('div');
-        btnRow.style.cssText = 'display:flex; gap:0.4rem; align-items:center; flex-wrap:wrap;';
-
-        var btnReload = document.createElement('button');
-        btnReload.style.cssText = 'padding:0.3rem 0.65rem; background:#21262d; color:#00f2fe; border:1px solid #00f2fe; border-radius:6px; cursor:pointer; font-size:0.75rem; font-weight:bold; font-family:monospace;';
-        btnReload.innerHTML = '🔄 Reload';
-        btnReload.title = 'Reload app preview iframe';
-        btnReload.onclick = function() {
-          LunoSpaDock.reloadActivePreviewIframe(targetProj);
-          if (typeof ClientApp !== 'undefined' && ClientApp.showToast) {
-            ClientApp.showToast('Refreshed [' + targetProj + '] preview!', 'info', '🔄');
-          }
-        };
-
-        // Pop out live in-memory preview in standalone tab
-        var btnPopOut = document.createElement('button');
-        btnPopOut.style.cssText = 'padding:0.3rem 0.65rem; background:#271052; color:#d2a8ff; border:1px solid #8257e5; border-radius:6px; cursor:pointer; font-size:0.75rem; font-weight:bold; font-family:monospace;';
-        btnPopOut.innerHTML = '↗ Pop Out Tab';
-        btnPopOut.title = 'Open live in-memory preview in full standalone window';
-        btnPopOut.onclick = async function() {
-          try {
-            var htmlContent = await LunoSpaDock.generateVirtualPreviewHtml(targetProj);
-            var blob = new Blob([htmlContent], { type: 'text/html' });
-            var url = URL.createObjectURL(blob);
-            window.open(url, '_blank');
-          } catch(e) {
-            alert('Could not pop out preview: ' + e.message);
-          }
-        };
-
-        var btnNewTab = document.createElement('button');
-        btnNewTab.style.cssText = 'padding:0.3rem 0.65rem; background:#238636; color:#fff; border:none; border-radius:6px; cursor:pointer; font-size:0.75rem; font-weight:bold; font-family:monospace; box-shadow:0 2px 8px rgba(35,134,54,0.3);';
-        btnNewTab.innerHTML = isStatic ? '🌐 Live Pages Site' : '🖥️ Standalone URL';
-        btnNewTab.title = isStatic ? 'Open live deployed GitHub Pages repository site' : 'Open app via local server port';
-        btnNewTab.onclick = function() {
-          if (!isStatic) {
-            window.open('/' + encodeURIComponent(targetProj) + '/', '_blank');
+      if (!LunoSpaDock._iframeCache[targetProj]) {
+        await LunoSpaDock.reloadActivePreviewIframe(targetProj);
+      } else {
+        Object.entries(LunoSpaDock._iframeCache).forEach(function(entry) {
+          if (entry[0] === targetProj) {
+            entry[1].style.display = 'block';
           } else {
-            var remoteRepo = (typeof LunoDeployEngine !== 'undefined') ? LunoDeployEngine.getRemoteRepoName(targetProj) : targetProj;
-            var account = (typeof LunoDeployEngine !== 'undefined' && LunoDeployEngine.getGithubAccount) ? LunoDeployEngine.getGithubAccount() : 'karmatics';
-            window.open('https://' + account.toLowerCase() + '.github.io/' + remoteRepo + '/', '_blank');
+            entry[1].style.display = 'none';
           }
-        };
-
-        btnRow.appendChild(btnReload);
-        btnRow.appendChild(btnPopOut);
-        btnRow.appendChild(btnNewTab);
-        toolbar.appendChild(leftInfo);
-        toolbar.appendChild(btnRow);
-        contentArea.appendChild(toolbar);
-
-        persistentAppRoot.style.display = 'block';
-
-        if (!LunoSpaDock._hasResizeListener) {
-          LunoSpaDock._hasResizeListener = true;
-          window.addEventListener('resize', function() {
-            LunoSpaDock.syncAppPreviewLayout();
-          });
-        }
-
-        LunoSpaDock.syncAppPreviewLayout();
-        setTimeout(function() { LunoSpaDock.syncAppPreviewLayout(); }, 60);
-
-        if (!LunoSpaDock._iframeCache[targetProj]) {
-          await LunoSpaDock.reloadActivePreviewIframe(targetProj);
-        } else {
-          Object.entries(LunoSpaDock._iframeCache).forEach(function(entry) {
-            if (entry[0] === targetProj) {
-              entry[1].style.display = 'block';
-            } else {
-              entry[1].style.display = 'none';
-            }
-          });
-        }
-      } else if (effectiveKey === 'projects' && typeof LunoProjectTemplates !== 'undefined' && typeof LunoProjectTemplates.mountFullPageView === 'function') {
-        LunoProjectTemplates.mountFullPageView(contentArea);
-      } else if (effectiveKey === 'checkpoint') {
-        if (typeof LunoCheckpointView !== 'undefined' && typeof LunoCheckpointView.mountUI === 'function') {
-          LunoCheckpointView.mountUI(contentArea);
-        } else {
-          if (typeof localStorage !== 'undefined') localStorage.setItem('luno_active_dock_view', 'workspace');
-          if (typeof ClientAppUI !== 'undefined') ClientAppUI.renderOutboxFirstLayout(mainApp);
-        }
-      } else if (effectiveKey === 'browser' && typeof DiskBrowser !== 'undefined') {
-        DiskBrowser.mountUI(contentArea);
-      } else if (effectiveKey === 'docs' && typeof LunoDocs !== 'undefined') {
-        LunoDocs.mountUI(contentArea);
-      } else if (effectiveKey === 'test' && typeof LunoTestRunner !== 'undefined') {
-        LunoTestRunner.mountUI(contentArea);
+        });
       }
+    } else if (effectiveKey === 'deploy' && typeof LunoDeployEngine !== 'undefined' && typeof LunoDeployEngine.mountUI === 'function') {
+      LunoDeployEngine.mountUI(contentArea);
+    } else if (effectiveKey === 'projects' && typeof LunoProjectTemplates !== 'undefined' && typeof LunoProjectTemplates.mountFullPageView === 'function') {
+      LunoProjectTemplates.mountFullPageView(contentArea);
+    } else if (effectiveKey === 'checkpoint') {
+      if (typeof LunoCheckpointView !== 'undefined' && typeof LunoCheckpointView.mountUI === 'function') {
+        LunoCheckpointView.mountUI(contentArea);
+      } else {
+        if (typeof localStorage !== 'undefined') localStorage.setItem('luno_active_dock_view', 'workspace');
+        if (typeof ClientAppUI !== 'undefined') ClientAppUI.renderOutboxFirstLayout(mainApp);
+      }
+    } else if (effectiveKey === 'browser' && typeof DiskBrowser !== 'undefined') {
+      DiskBrowser.mountUI(contentArea);
+    } else if (effectiveKey === 'docs' && typeof LunoDocs !== 'undefined') {
+      LunoDocs.mountUI(contentArea);
+    } else if (effectiveKey === 'test' && typeof LunoTestRunner !== 'undefined') {
+      LunoTestRunner.mountUI(contentArea);
+    }
   }
   static syncAppPreviewLayout() {
       var contentArea = document.getElementById('luno-spa-content-area');

@@ -39,16 +39,15 @@ class ClientApp {
   }
 
   static getTargetProject() {
-      if (ClientApp.targetProjectName && ClientApp.targetProjectName !== 'Luno Workspace') {
-        return ClientApp.targetProjectName;
-      }
-      if (ClientApp.activeRootDir) {
-        var lastSegment = ClientApp.activeRootDir.split('/').filter(Boolean).pop();
-        if (lastSegment && lastSegment !== 'Luno Workspace') return lastSegment;
-      }
-      return 'Luno';
+    if (ClientApp.targetProjectName && ClientApp.targetProjectName !== 'Luno Workspace') {
+      return ClientApp.targetProjectName;
     }
-
+    if (ClientApp.activeRootDir) {
+      var lastSegment = ClientApp.activeRootDir.split('/').filter(Boolean).pop();
+      if (lastSegment && lastSegment !== 'Luno Workspace') return lastSegment;
+    }
+    return 'Luno';
+  }
   static async init() {
       console.log('[Luno] Workspace online.');
       try {
@@ -295,55 +294,53 @@ class ClientApp {
   }
 
   static async switchExclusiveTargetProject(projectName) {
-      var pName = projectName || 'Luno';
-      var isLunoSelf = (pName === 'Luno');
-      var currentTarget = (typeof ClientApp !== 'undefined' && ClientApp.getTargetProject) ? ClientApp.getTargetProject() : '';
-      var currentActiveView = (typeof LunoSpaDock !== 'undefined' && LunoSpaDock.activeDockView) || '';
-      var openTabs = (typeof LunoSpaHeaderNav !== 'undefined' && LunoSpaHeaderNav.getOpenProjectTabs)
-        ? LunoSpaHeaderNav.getOpenProjectTabs()
-        : [];
+    var pName = projectName || 'Luno';
+    var isLunoSelf = (pName === 'Luno');
+    var isLibrary = (pName === 'Library' || pName.toLowerCase() === 'library');
+    var openTabs = (typeof LunoSpaHeaderNav !== 'undefined' && LunoSpaHeaderNav.getOpenProjectTabs)
+      ? LunoSpaHeaderNav.getOpenProjectTabs()
+      : [];
 
-      var tabsToClose = isLunoSelf ? openTabs : openTabs.filter(function(t) { return t !== pName; });
+    var tabsToClose = (isLunoSelf || isLibrary) ? openTabs : openTabs.filter(function(t) { return t !== pName; });
 
-      // Clean up DOM nodes and iframe caches for all closed tabs
-      if (typeof LunoSpaHeaderNav !== 'undefined' && LunoSpaHeaderNav.cleanupProjectTab) {
-        tabsToClose.forEach(function(t) {
-          LunoSpaHeaderNav.cleanupProjectTab(t);
-        });
-      }
-
-      if (isLunoSelf) {
-        if (typeof LunoSpaHeaderNav !== 'undefined' && LunoSpaHeaderNav.saveOpenProjectTabs) {
-          LunoSpaHeaderNav.saveOpenProjectTabs([]);
-        }
-        ClientApp.setTargetProject('Luno');
-        if (typeof LunoSpaDock !== 'undefined' && LunoSpaDock.mountView) {
-          await LunoSpaDock.mountView('workspace');
-        }
-        if (tabsToClose.length > 0 && typeof ClientApp.showToast === 'function') {
-          ClientApp.showToast('Target set to [Luno] (Self-Improve) — Home view active', 'success', '⚡');
-        }
-        return;
-      }
-
-      // Retain only the new target in open tabs for sibling apps
-      if (typeof LunoSpaHeaderNav !== 'undefined' && LunoSpaHeaderNav.saveOpenProjectTabs) {
-        LunoSpaHeaderNav.saveOpenProjectTabs([pName]);
-      }
-
-      // Update target project state and active app storage
-      ClientApp.setTargetProject(pName, { openTab: true });
-
-      // Mount and focus the target project preview
-      if (typeof LunoSpaDock !== 'undefined' && LunoSpaDock.mountView) {
-        await LunoSpaDock.mountView('app_' + pName);
-      }
-
-      // Inform user when other tabs were culled
-      if (tabsToClose.length > 0 && typeof ClientApp.showToast === 'function') {
-        ClientApp.showToast('Switched to [' + pName + '] (closed ' + tabsToClose.length + ' other preview tab' + (tabsToClose.length === 1 ? '' : 's') + ')', 'info', '🎯');
-      }
+    // Clean up DOM nodes and iframe caches for all closed tabs
+    if (typeof LunoSpaHeaderNav !== 'undefined' && LunoSpaHeaderNav.cleanupProjectTab) {
+      tabsToClose.forEach(function(t) {
+        LunoSpaHeaderNav.cleanupProjectTab(t);
+      });
     }
+
+    // If selecting Luno or Library, stay on the workspace home (do NOT mount a preview iframe)
+    if (isLunoSelf || isLibrary) {
+      if (typeof LunoSpaHeaderNav !== 'undefined' && LunoSpaHeaderNav.saveOpenProjectTabs) {
+        LunoSpaHeaderNav.saveOpenProjectTabs([]);
+      }
+      ClientApp.setTargetProject(pName);
+      if (typeof LunoSpaDock !== 'undefined' && LunoSpaDock.mountView) {
+        await LunoSpaDock.mountView('workspace');
+      }
+      if (typeof ClientApp.showToast === 'function') {
+        var label = isLibrary ? 'Target set to [Library] (Shared Hub) — Home view active' : 'Target set to [Luno] (Self-Improve) — Home view active';
+        ClientApp.showToast(label, 'success', isLibrary ? '📚' : '⚡');
+      }
+      return;
+    }
+
+    // For runnable sibling apps, retain target in open tabs and mount preview
+    if (typeof LunoSpaHeaderNav !== 'undefined' && LunoSpaHeaderNav.saveOpenProjectTabs) {
+      LunoSpaHeaderNav.saveOpenProjectTabs([pName]);
+    }
+
+    ClientApp.setTargetProject(pName, { openTab: true });
+
+    if (typeof LunoSpaDock !== 'undefined' && LunoSpaDock.mountView) {
+      await LunoSpaDock.mountView('app_' + pName);
+    }
+
+    if (tabsToClose.length > 0 && typeof ClientApp.showToast === 'function') {
+      ClientApp.showToast('Switched to [' + pName + ']', 'info', '🎯');
+    }
+  }
 }
 
 globalThis.ClientApp = ClientApp;
