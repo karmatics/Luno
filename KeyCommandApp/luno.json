@@ -1,0 +1,20 @@
+{
+  "name": "KeyCommandApp",
+  "version": "1.0.0",
+  "description": "Standalone KeyCommandEngine Test Harness & Single-Stroke Dispatch Sandbox",
+  "type": "luno-web-app",
+  "entrypoint": {
+    "file": "src/KeyCommandApp.js",
+    "class": "KeyCommandApp",
+    "method": "run"
+  },
+  "main": [
+    "src/KeyCommandApp.js"
+  ],
+  "library": [
+    "DomBasics.js",
+    "UITools.js",
+    "KeyCommandHandler.js"
+  ],
+  "styles": []
+}

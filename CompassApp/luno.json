@@ -1,0 +1,27 @@
+{
+  "name": "CompassApp",
+  "version": "1.0.0",
+  "description": "Standalone AccuDraw Squircle Compass Engine & 3D Morphing Testbench",
+  "type": "luno-web-app",
+  "entrypoint": {
+    "file": "src/CompassApp.js",
+    "class": "CompassApp",
+    "method": "run"
+  },
+  "main": [
+    "../accuCad/js/Squircle3D.js",
+    "../accuCad/js/ArcSquircleCalc.js",
+    "../accuCad/js/BezierSquircleCalc.js",
+    "../accuCad/js/AccuDraw.js",
+    "../CadPlan/js/SquircleCompassSvg.js",
+    "src/CompassApp.js"
+  ],
+  "library": [
+    "DomBasics.js",
+    "UITools.js",
+    "ThreeJSLoader.js",
+    "SliderControl.js",
+    "ColorPicker.js"
+  ],
+  "styles": []
+}
