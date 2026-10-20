@@ -69,47 +69,49 @@ class OutboxQueue {
   }
 
   static addBundle(title, payloadText, options) {
-    var opts = options || {};
-    var payload = payloadText || '';
-    var item = {
-      id: 'outbox_' + Date.now() + '_' + Math.floor(Math.random() * 1000),
-      title: title || 'Outbox Item',
-      payload: payload,
-      timestamp: new Date().toLocaleTimeString(),
-      priority: opts.priority || 'normal',
-      lines: payload.split('\n').length,
-      estTokens: Math.ceil(payload.length / 4)
-    };
+      // Ensure cross-window message listener is running
+      OutboxQueue.initMessageListener();
 
-    OutboxQueue.queue.push(item);
-    if (OutboxQueue.queue.length > 15) OutboxQueue.queue.shift();
+      var opts = options || {};
+      var payload = payloadText || '';
+      var item = {
+        id: 'outbox_' + Date.now() + '_' + Math.floor(Math.random() * 1000),
+        title: title || 'Outbox Item',
+        payload: payload,
+        timestamp: new Date().toLocaleTimeString(),
+        priority: opts.priority || 'normal',
+        lines: payload.split('\n').length,
+        estTokens: Math.ceil(payload.length / 4)
+      };
 
-    OutboxQueue.saveQueue();
-    OutboxQueue.notifyTargetPage(item.title, payload);
+      OutboxQueue.queue.push(item);
+      if (OutboxQueue.queue.length > 15) OutboxQueue.queue.shift();
 
-    var outboxCard = document.querySelector('.outbox-card');
-    if (outboxCard && typeof LunoAnimationEngine !== 'undefined') {
-      LunoAnimationEngine.pulseTarget(outboxCard, {
-        color: '#d2a8ff',
-        glowColor: 'rgba(130, 87, 229, 0.75)'
-      });
-      if (typeof LunoAnimationEngine.wavePulse === 'function') {
-        LunoAnimationEngine.wavePulse(outboxCard, '#8257e5');
+      OutboxQueue.saveQueue();
+      OutboxQueue.notifyTargetPage(item.title, payload);
+
+      var outboxCard = document.querySelector('.outbox-card');
+      if (outboxCard && typeof LunoAnimationEngine !== 'undefined') {
+        LunoAnimationEngine.pulseTarget(outboxCard, {
+          color: '#d2a8ff',
+          glowColor: 'rgba(130, 87, 229, 0.75)'
+        });
+        if (typeof LunoAnimationEngine.wavePulse === 'function') {
+          LunoAnimationEngine.wavePulse(outboxCard, '#8257e5');
+        }
       }
-    }
 
-    if (typeof ClientAppUI !== 'undefined') {
-      ClientAppUI.outboxExpanded = true;
-      var content = typeof document !== 'undefined' ? document.getElementById('outbox-card-content') : null;
-      if (content) content.style.display = 'block';
-    }
+      if (typeof ClientAppUI !== 'undefined') {
+        ClientAppUI.outboxExpanded = true;
+        var content = typeof document !== 'undefined' ? document.getElementById('outbox-card-content') : null;
+        if (content) content.style.display = 'block';
+      }
 
-    if (typeof OutboxWidgetRenderer !== 'undefined' && OutboxWidgetRenderer.renderWidget) {
-      OutboxWidgetRenderer.renderWidget('outbox-queue-container');
+      if (typeof OutboxWidgetRenderer !== 'undefined' && OutboxWidgetRenderer.renderWidget) {
+        OutboxWidgetRenderer.renderWidget('outbox-queue-container');
+      }
+      return item;
     }
-    return item;
-  }
-
   static togglePriority(id) {
     var item = OutboxQueue.queue.find(function(i) { return i && i.id === id; });
     if (item) {
@@ -458,6 +460,25 @@ class OutboxQueue {
             ClientApp.showToast('Bundle Error: ' + err.message, 'error', '❌');
           }
         }
+    }
+
+  static initMessageListener() {
+      if (typeof window === 'undefined' || window._lunoOutboxListenerInitialized) return;
+      window._lunoOutboxListenerInitialized = true;
+
+      window.addEventListener('message', (e) => {
+        if (!e.data || typeof e.data !== 'object') return;
+        if (e.data.type === 'LUNO_ADD_OUTBOX_BUNDLE') {
+          const title = e.data.title || 'Inbound Outbox Bundle';
+          const payload = e.data.payload || '';
+          if (payload) {
+            OutboxQueue.addBundle(title, payload, { priority: e.data.priority || 'high' });
+            if (typeof ClientApp !== 'undefined' && typeof ClientApp.showToast === 'function') {
+              ClientApp.showToast(`Received "${title}" into Outbox!`, 'success', '📤');
+            }
+          }
+        }
+      });
     }
 }
 

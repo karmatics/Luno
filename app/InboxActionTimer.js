@@ -98,58 +98,72 @@ class InboxActionTimer {
   }
 
   static showUndoBanner(payloadText, modifiedCount) {
-    const parent = document.getElementById('inbox-card-content') || document.body;
-    let container = document.getElementById('inbox-timer-container');
-    if (!container) {
-      container = document.createElement('div');
-      container.id = 'inbox-timer-container';
-      parent.appendChild(container);
+      const parent = document.getElementById('inbox-card-content') || document.body;
+      let container = document.getElementById('inbox-timer-container');
+      if (!container) {
+        container = document.createElement('div');
+        container.id = 'inbox-timer-container';
+        parent.appendChild(container);
+      }
+      container.innerHTML = '';
+      container.style.display = 'flex';
+
+      var targetProj = (typeof ClientApp !== 'undefined' && ClientApp.getTargetProject)
+        ? ClientApp.getTargetProject()
+        : 'Luno';
+
+      const banner = document.createElement('div');
+      banner.style.cssText = 'display:flex; align-items:center; justify-content:space-between; width:100%; background:#0d2818; border:1px solid #238636; padding:0.55rem 0.75rem; border-radius:8px; font-size:0.78rem; color:#3fb950; margin-top:0.5rem; font-family:monospace; box-sizing:border-box; flex-wrap:wrap; gap:0.4rem;';
+
+      const info = document.createElement('div');
+      info.style.cssText = 'display:flex; align-items:center; gap:0.55rem;';
+      info.innerHTML = `<span>✅ <strong>Applied ${modifiedCount || 1} file change(s)!</strong></span>`;
+
+      const btnGroup = document.createElement('div');
+      btnGroup.style.cssText = 'display:flex; gap:0.35rem;';
+
+      const btnDiff = document.createElement('button');
+      btnDiff.style.cssText = 'background:#161b22; color:#00f2fe; border:1px solid #00f2fe; border-radius:6px; padding:0.3rem 0.55rem; font-size:0.72rem; cursor:pointer; font-family:monospace; font-weight:bold;';
+      btnDiff.textContent = '🔍 Inspect Diffs';
+      btnDiff.onclick = (e) => {
+        e.stopPropagation();
+        if (typeof DiffApprovalModal !== 'undefined') {
+          DiffApprovalModal.open({
+            payloadText: payloadText,
+            onConfirm: () => {
+              if (typeof ClientApp !== 'undefined' && ClientApp.showToast) ClientApp.showToast('Diffs inspected.', 'info');
+            },
+            onCancel: () => {
+              if (typeof ClientApp !== 'undefined' && ClientApp.showToast) ClientApp.showToast('Diff inspection closed.', 'info');
+            }
+          });
+        }
+      };
+
+      const btnTimeline = document.createElement('button');
+      btnTimeline.style.cssText = 'background:#271052; color:#d2a8ff; border:1px solid #8257e5; border-radius:6px; padding:0.3rem 0.55rem; font-size:0.72rem; cursor:pointer; font-family:monospace; font-weight:bold;';
+      btnTimeline.textContent = '⏳ Timeline';
+      btnTimeline.onclick = (e) => {
+        e.stopPropagation();
+        if (typeof LunoTimelineDialog !== 'undefined') {
+          LunoTimelineDialog.open({ project: targetProj });
+        }
+      };
+
+      btnGroup.appendChild(btnDiff);
+      btnGroup.appendChild(btnTimeline);
+      banner.appendChild(info);
+      banner.appendChild(btnGroup);
+      container.appendChild(banner);
+
+      setTimeout(() => {
+        if (banner.parentNode) {
+          banner.style.transition = 'opacity 0.5s ease-out';
+          banner.style.opacity = '0';
+          setTimeout(() => banner.remove(), 500);
+        }
+      }, 8000);
     }
-    container.innerHTML = '';
-    container.style.display = 'flex';
-
-    const banner = document.createElement('div');
-    banner.style.cssText = 'display:flex; align-items:center; justify-content:space-between; width:100%; background:#0d2818; border:1px solid #238636; padding:0.55rem 0.75rem; border-radius:8px; font-size:0.78rem; color:#3fb950; margin-top:0.5rem; font-family:monospace; box-sizing:border-box; flex-wrap:wrap; gap:0.4rem;';
-
-    const info = document.createElement('div');
-    info.style.cssText = 'display:flex; align-items:center; gap:0.55rem;';
-    info.innerHTML = `<span>✅ <strong>Applied ${modifiedCount || 1} file change(s)!</strong></span>`;
-
-    const btnGroup = document.createElement('div');
-    btnGroup.style.cssText = 'display:flex; gap:0.35rem;';
-
-    const btnDiff = document.createElement('button');
-    btnDiff.style.cssText = 'background:#161b22; color:#00f2fe; border:1px solid #00f2fe; border-radius:6px; padding:0.3rem 0.55rem; font-size:0.72rem; cursor:pointer; font-family:monospace; font-weight:bold;';
-    btnDiff.textContent = '🔍 Inspect Diffs';
-    btnDiff.onclick = (e) => {
-      e.stopPropagation();
-      if (typeof DiffApprovalModal !== 'undefined') {
-        DiffApprovalModal.open({
-          payloadText: payloadText,
-          onConfirm: () => {
-            if (typeof ClientApp !== 'undefined' && ClientApp.showToast) ClientApp.showToast('Diffs inspected.', 'info');
-          },
-          onCancel: () => {
-            if (typeof ClientApp !== 'undefined' && ClientApp.showToast) ClientApp.showToast('Diff inspection closed.', 'info');
-          }
-        });
-      }
-    };
-
-    btnGroup.appendChild(btnDiff);
-    banner.appendChild(info);
-    banner.appendChild(btnGroup);
-    container.appendChild(banner);
-
-    setTimeout(() => {
-      if (banner.parentNode) {
-        banner.style.transition = 'opacity 0.5s ease-out';
-        banner.style.opacity = '0';
-        setTimeout(() => banner.remove(), 500);
-      }
-    }, 8000);
-  }
-
   static get defaultDuration() {
       try {
         if (typeof localStorage !== 'undefined') {

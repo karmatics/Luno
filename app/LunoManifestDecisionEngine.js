@@ -94,9 +94,11 @@ class LunoManifestDecisionEngine {
         try {
           let normPath = await LunoManifestDecisionEngine.resolveCanonicalFilePath(f.filePath, manifestObj, targetProj);
 
+          const isHtmlTarget = normPath.endsWith('.html') || normPath.endsWith('.htm') || f.tagName === 'template';
           const isSurgicalPatch = Boolean(f.methodSpec || f.action === 'patch' || f.action === 'delete');
           const isExplicitMerge = (f.action === 'merge');
 
+          // 1. JSON Merge Handling
           if (isExplicitMerge && (normPath.endsWith('.json') || normPath.endsWith('.jsonc'))) {
             let baseJsonContent = '';
             if (fullFilesMap.has(normPath)) {
@@ -104,9 +106,7 @@ class LunoManifestDecisionEngine {
             } else if (typeof LunoApiClient !== 'undefined' && LunoApiClient.fetchFsRead) {
               try {
                 let res = await LunoApiClient.fetchFsRead(normPath, targetProj);
-                if (res && res.content !== undefined) {
-                  baseJsonContent = res.content;
-                }
+                if (res && res.content !== undefined) baseJsonContent = res.content;
               } catch (e) {}
             }
 
@@ -142,12 +142,14 @@ class LunoManifestDecisionEngine {
             continue;
           }
 
+          // 2. Full File Write
           if (!isSurgicalPatch) {
             fullFilesMap.set(normPath, f.content || '');
             patchActionsSummary.push({ path: normPath, mode: 'full-file', target: normPath, success: true });
             continue;
           }
 
+          // 3. Retrieve Base File Content for Patching
           let baseContent = '';
           if (fullFilesMap.has(normPath)) {
             baseContent = fullFilesMap.get(normPath);
@@ -159,14 +161,50 @@ class LunoManifestDecisionEngine {
           }
 
           if (!baseContent || !baseContent.trim()) {
-            throw new Error('[Luno AST Guard] Cannot surgically patch "' + (f.methodSpec || normPath) + '": Base file "' + normPath + '" was not found in storage.');
+            throw new Error('[Luno Storage Guard] Cannot surgically patch "' + (f.methodSpec || normPath) + '": Base file "' + normPath + '" was not found in storage.');
           }
 
+          let patched = baseContent;
+
+          // 4. HTML/Template Surgical Block Splicing via data-block/data-id
+          if (isHtmlTarget) {
+            const targetBlock = f.methodSpec || f.blockSpec || normPath;
+            if (typeof LunoClassPatcher !== 'undefined' && LunoClassPatcher.patchHtmlInSource) {
+              patched = LunoClassPatcher.patchHtmlInSource(baseContent, targetBlock, f.content, { allowInsert: true });
+            } else {
+              patched = baseContent + '\n\n' + f.content;
+            }
+
+            if (isDirectAutoApply) {
+              fullFilesMap.set(normPath, patched);
+              patchActionsSummary.push({
+                path: normPath,
+                mode: 'direct-html-apply',
+                target: targetBlock,
+                action: f.action || 'patch',
+                success: true
+              });
+            } else {
+              const tagWord = f.tagName || 'template';
+              const safeContent = (f.content || '').split('</' + tagWord + '>').join('<\\/' + tagWord + '>');
+              let block = '<' + tagWord + ' data-file="' + normPath + '" data-method="' + targetBlock + '" data-action="' + (f.action || 'patch') + '">\n' + safeContent + '\n</' + tagWord + '>';
+              journalPatchBlocks.push(block);
+              patchActionsSummary.push({
+                path: normPath,
+                mode: 'patchlog-journal',
+                target: targetBlock,
+                action: f.action || 'patch',
+                success: true
+              });
+            }
+            continue;
+          }
+
+          // 5. JavaScript ES6 Class Method Surgical AST Patching
           if (!globalThis.LunoClassPatcher) {
             throw new Error('[Luno AST Guard] LunoClassPatcher is not loaded in client runtime.');
           }
 
-          let patched = baseContent;
           if (f.action === 'delete') {
             patched = globalThis.LunoClassPatcher.deleteMethodInSource(baseContent, f.methodSpec || normPath);
           } else {
@@ -219,7 +257,7 @@ class LunoManifestDecisionEngine {
           relativePath = relativePath.slice(targetProj.length + 1);
         }
         processedFilesList.push({
-          tagName: 'script',
+          tagName: relativePath.endsWith('.html') ? 'template' : (relativePath.endsWith('.css') ? 'style' : 'script'),
           filePath: relativePath,
           action: 'direct',
           content: content
@@ -257,87 +295,89 @@ class LunoManifestDecisionEngine {
     }
 
   static async resolveCanonicalFilePath(rawPath, manifestObj, targetProj) {
-        if (!rawPath || typeof rawPath !== 'string') return '';
-        let norm = rawPath.replace(/\\/g, '/').replace(/^\/+/, '').trim();
-        if (norm.startsWith('Luno Workspace/')) norm = norm.slice(15).trim();
-        if (norm.startsWith('LunoProjects/')) norm = norm.slice(13).trim();
-        if (norm.startsWith('./')) norm = norm.slice(2).trim();
+    if (!rawPath || typeof rawPath !== 'string') return '';
+    let norm = rawPath.replace(/\\/g, '/').replace(/^\/+/, '').trim();
+    if (norm.startsWith('Luno Workspace/')) norm = norm.slice(15).trim();
+    if (norm.startsWith('LunoProjects/')) norm = norm.slice(13).trim();
+    if (norm.startsWith('./')) norm = norm.slice(2).trim();
 
-        // Canonical single-path anchors
-        if (norm === 'server.js' || norm === 'Luno/server.js') {
-          return 'Luno/server.js';
+    // Canonical single-path anchors
+    if (norm === 'server.js' || norm === 'Luno/server.js') {
+      return 'Luno/server.js';
+    }
+    if (norm === 'LunoLoader.js' || norm === 'app/LunoLoader.js' || norm === 'Luno/app/LunoLoader.js' || norm === 'Library/LunoLoader.js') {
+      return 'Library/LunoLoader.js';
+    }
+    if (norm === 'LunoPatchLog.html') return norm;
+
+    if (norm.startsWith('Library/') || norm.startsWith('library/')) {
+      return 'Library/' + norm.replace(/^(?:Library|library)\//, '');
+    }
+
+    // Check against manifestObj if provided for multi-level canonical discovery
+    if (manifestObj && typeof manifestObj === 'object') {
+      const allManifestPaths = [].concat(
+        manifestObj.main || [],
+        manifestObj.files || [],
+        manifestObj.docs || [],
+        manifestObj.styles || []
+      );
+      const fileName = norm.split('/').pop();
+      for (const mPath of allManifestPaths) {
+        if (!mPath || typeof mPath !== 'string') continue;
+        const cleanMPath = mPath.replace(/\\/g, '/').replace(/^\/+/, '').trim();
+        if (cleanMPath === norm || cleanMPath === ('Luno/' + norm)) {
+          return cleanMPath;
         }
-        if (norm === 'LunoLoader.js' || norm === 'app/LunoLoader.js' || norm === 'Luno/app/LunoLoader.js' || norm === 'Library/LunoLoader.js') {
-          return 'Library/LunoLoader.js';
+        if (cleanMPath.endsWith('/' + norm)) {
+          return cleanMPath;
         }
-        if (norm === 'LunoPatchLog.html') return norm;
-
-        if (norm.startsWith('Library/') || norm.startsWith('library/')) {
-          return 'Library/' + norm.replace(/^(?:Library|library)\//, '');
+        if (cleanMPath.endsWith('/' + fileName)) {
+          return cleanMPath;
         }
-
-        // Check against manifestObj if provided for multi-level canonical discovery
-        if (manifestObj && typeof manifestObj === 'object') {
-          const allManifestPaths = [].concat(
-            manifestObj.main || [],
-            manifestObj.files || [],
-            manifestObj.docs || [],
-            manifestObj.styles || []
-          );
-          const fileName = norm.split('/').pop();
-          for (const mPath of allManifestPaths) {
-            if (!mPath || typeof mPath !== 'string') continue;
-            const cleanMPath = mPath.replace(/\\/g, '/').replace(/^\/+/, '').trim();
-            if (cleanMPath === norm || cleanMPath === ('Luno/' + norm)) {
-              return cleanMPath;
-            }
-            if (cleanMPath.endsWith('/' + norm)) {
-              return cleanMPath;
-            }
-            if (cleanMPath.endsWith('/' + fileName)) {
-              return cleanMPath;
-            }
-          }
-        }
-
-        // Check if first segment is an existing sibling project directory
-        const firstSlash = norm.indexOf('/');
-        if (firstSlash !== -1) {
-          const firstSegment = norm.slice(0, firstSlash);
-          const knownSiblings = [
-            'vibes', 'aardvarkBookmarklet', 'AardvarkExtension', 'AardvarkPlaylist', 'AlphabetGame',
-            'Basic3D', 'BasicsWithDialogBox', 'BookmarkletWorkshop', 'BulbAndButton', 'Calculator',
-            'Es6Converter', 'LegoDetective', 'LunoParser', 'LunoTests', 'MathStorm', 'Penrose', 'PleasureAndPain',
-            'RobotDividend', 'SvgStudio', 'TriBlob', 'ValuationOfAccudraw', 'accuCad', 'accudraw',
-            'guessTheNoteGame', 'situation', 'squircle', 'Squircle', 'teacup'
-          ];
-          if (knownSiblings.includes(firstSegment) || (targetProj && targetProj.toLowerCase() === firstSegment.toLowerCase())) {
-            return norm;
-          }
-
-          try {
-            if (typeof localStorage !== 'undefined') {
-              const cached = localStorage.getItem('luno_cached_projects_list');
-              if (cached) {
-                const list = JSON.parse(cached);
-                if (Array.isArray(list) && list.some(p => p && p.name.toLowerCase() === firstSegment.toLowerCase())) {
-                  return norm;
-                }
-              }
-            }
-          } catch (e) {}
-        }
-
-        if (targetProj && norm.startsWith(targetProj + '/')) {
-          return norm;
-        }
-
-        if (targetProj === 'Luno' && !norm.startsWith('Luno/')) {
-          return 'Luno/' + norm;
-        }
-
-        return targetProj ? (targetProj + '/' + norm) : norm;
       }
+    }
+
+    // Check if first segment is an existing sibling project directory
+    const firstSlash = norm.indexOf('/');
+    if (firstSlash !== -1) {
+      const firstSegment = norm.slice(0, firstSlash);
+      const knownSiblings = [
+        'Comments', 'Community', 'Voting', 'CadPlan', 'Library', 'Luno',
+        'vibes', 'aardvarkBookmarklet', 'AardvarkExtension', 'AardvarkPlaylist', 'AlphabetGame',
+        'Basic3D', 'BasicsWithDialogBox', 'BookmarkletWorkshop', 'BulbAndButton', 'Calculator',
+        'Es6Converter', 'LegoDetective', 'LunoParser', 'LunoTests', 'MathStorm', 'Penrose', 'PleasureAndPain',
+        'RobotDividend', 'SvgStudio', 'TriBlob', 'ValuationOfAccudraw', 'accuCad', 'accudraw',
+        'guessTheNoteGame', 'situation', 'squircle', 'Squircle', 'teacup', 'TouchController',
+        'CompassApp', 'KeyCommandApp'
+      ];
+      if (knownSiblings.includes(firstSegment) || (targetProj && targetProj.toLowerCase() === firstSegment.toLowerCase())) {
+        return norm;
+      }
+
+      try {
+        if (typeof localStorage !== 'undefined') {
+          const cached = localStorage.getItem('luno_cached_projects_list');
+          if (cached) {
+            const list = JSON.parse(cached);
+            if (Array.isArray(list) && list.some(p => p && p.name.toLowerCase() === firstSegment.toLowerCase())) {
+              return norm;
+            }
+          }
+        }
+      } catch (e) {}
+    }
+
+    if (targetProj && norm.startsWith(targetProj + '/')) {
+      return norm;
+    }
+
+    if (targetProj === 'Luno' && !norm.startsWith('Luno/')) {
+      return 'Luno/' + norm;
+    }
+
+    return targetProj ? (targetProj + '/' + norm) : norm;
+  }
 }
 
 globalThis.LunoManifestDecisionEngine = LunoManifestDecisionEngine;

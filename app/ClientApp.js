@@ -203,75 +203,165 @@ class ClientApp {
     } catch (e) {}
   }
 
-  static showFeedback(text, type) {
-    var feedbackType = type || 'info';
-    var box = document.getElementById('feedback');
-    var parentCard = document.getElementById('feedback-card');
-    if (!box) return;
+  static showFeedback(text, type, options) {
+      var feedbackType = type || 'info';
+      var opts = options || {};
+      var box = document.getElementById('feedback');
+      var parentCard = document.getElementById('feedback-card');
+      if (!box) return;
 
-    if (parentCard) {
-      parentCard.style.display = 'block';
-      parentCard.style.boxShadow = '0 0 24px #00f2fe, 0 0 12px #3fb950';
-      try {
-        parentCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      } catch (e) {}
-      setTimeout(function() {
-        if (parentCard) parentCard.style.boxShadow = '0 4px 12px rgba(0, 242, 254, 0.2)';
-      }, 3500);
-    }
+      if (parentCard) {
+        parentCard.style.display = 'block';
+        parentCard.style.boxShadow = '0 0 24px #00f2fe, 0 0 12px #3fb950';
+        try {
+          parentCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        } catch (e) {}
+        setTimeout(function() {
+          if (parentCard) parentCard.style.boxShadow = '0 4px 12px rgba(0, 242, 254, 0.2)';
+        }, 3500);
+      }
 
-    box.style.display = 'block';
-    box.style.color = feedbackType === 'error' ? '#ff7b72' : (feedbackType === 'info' ? '#58a6ff' : '#3fb950');
+      box.style.display = 'block';
+      box.style.color = feedbackType === 'error' ? '#ff7b72' : (feedbackType === 'info' ? '#58a6ff' : '#3fb950');
 
-    var headerHtml = [
-      '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.4rem; border-bottom:1px solid #30363d; padding-bottom:0.35rem; flex-wrap:wrap; gap:0.4rem;">',
-      '  <span style="font-weight:bold; color:#00f2fe; font-size:0.75rem; font-family:monospace;">⚡ OUTPUT & EXECUTION FEEDBACK:</span>',
-      '  <div style="display:flex; gap:0.35rem; align-items:center;">',
-      '    <button id="btn-feedback-outbox" style="padding:0.25rem 0.6rem; font-size:0.7rem; background:#271052; color:#d2a8ff; border:1px solid #8257e5; border-radius:4px; cursor:pointer; font-weight:bold; font-family:monospace;">📤 Send to Outbox</button>',
-      '    <button id="btn-feedback-copy" style="padding:0.25rem 0.6rem; font-size:0.7rem; background:#161b22; color:#58a6ff; border:1px solid #0088cc; border-radius:4px; cursor:pointer; font-weight:bold; font-family:monospace;">📋 Copy Output</button>',
-      '    <button id="btn-feedback-close" style="padding:0.25rem 0.5rem; font-size:0.7rem; background:#21262d; color:#c9d1d9; border:1px solid #30363d; border-radius:4px; cursor:pointer; font-weight:bold; font-family:monospace;">✖ Close</button>',
-      '  </div>',
-      '</div>',
-      '<pre id="feedback-text-area" style="white-space:pre-wrap; word-break:break-all; font-family:monospace; font-size:0.78rem; max-height:280px; overflow-y:auto; margin:0; padding:0.4rem; background:#070a13; border-radius:6px;"></pre>'
-    ].join('\n');
+      var fileDiffs = opts.fileDiffs || [];
+      var rawText = String(text || '');
 
-    box.innerHTML = headerHtml;
+      var isColorEnabled = (typeof LunoSettings !== 'undefined' && typeof LunoSettings.colorizedFeedbackEnabled === 'function')
+        ? LunoSettings.colorizedFeedbackEnabled()
+        : true;
 
-    var textEl = document.getElementById('feedback-text-area');
-    if (textEl) textEl.textContent = text;
+      var totalAdded = fileDiffs.reduce(function(sum, d) { return sum + (d.linesAdded || 0); }, 0);
+      var totalRemoved = fileDiffs.reduce(function(sum, d) { return sum + (d.linesRemoved || 0); }, 0);
+      var totalsBadge = fileDiffs.length > 0
+        ? '<span style="font-size:0.68rem; color:#3fb950; background:#0d2818; border:1px solid #238636; padding:0.15rem 0.45rem; border-radius:8px; font-weight:bold;">' + fileDiffs.length + ' file(s) · +' + totalAdded + ' / -' + totalRemoved + ' LOC</span>'
+        : '';
 
-    var btnOutbox = document.getElementById('btn-feedback-outbox');
-    if (btnOutbox) {
-      btnOutbox.onclick = function() {
-        if (text && typeof OutboxQueue !== 'undefined' && OutboxQueue.addBundle) {
-          OutboxQueue.addBundle('Storage Execution Response Output', text, { priority: 'high' });
-          ClientApp.showToast('Sent execution feedback directly to Outbox!', 'success', '📤');
-        }
-      };
-    }
+      var headerHtml = [
+        '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.4rem; border-bottom:1px solid #30363d; padding-bottom:0.35rem; flex-wrap:wrap; gap:0.4rem;">',
+        '  <div style="display:flex; align-items:center; gap:0.4rem; flex-wrap:wrap;">',
+        '    <span style="font-weight:bold; color:#00f2fe; font-size:0.75rem; font-family:monospace;">⚡ EXECUTION & MODIFICATION FEEDBACK:</span>',
+        '    ' + totalsBadge,
+        '  </div>',
+        '  <div style="display:flex; gap:0.35rem; align-items:center; flex-wrap:wrap;">',
+        (fileDiffs.length > 0 && typeof DiffApprovalModal !== 'undefined') ? '    <button id="btn-feedback-inspect-diffs" style="padding:0.25rem 0.6rem; font-size:0.7rem; background:#003847; color:#00f2fe; border:1px solid #00f2fe; border-radius:4px; cursor:pointer; font-weight:bold; font-family:monospace;">🔍 Inspect Diffs (' + fileDiffs.length + ')</button>' : '',
+        '    <button id="btn-feedback-outbox" style="padding:0.25rem 0.6rem; font-size:0.7rem; background:#271052; color:#d2a8ff; border:1px solid #8257e5; border-radius:4px; cursor:pointer; font-weight:bold; font-family:monospace;">📤 Send to Outbox</button>',
+        '    <button id="btn-feedback-copy" style="padding:0.25rem 0.6rem; font-size:0.7rem; background:#161b22; color:#58a6ff; border:1px solid #0088cc; border-radius:4px; cursor:pointer; font-weight:bold; font-family:monospace;">📋 Copy Output</button>',
+        '    <button id="btn-feedback-close" style="padding:0.25rem 0.5rem; font-size:0.7rem; background:#21262d; color:#c9d1d9; border:1px solid #30363d; border-radius:4px; cursor:pointer; font-weight:bold; font-family:monospace;">✖ Close</button>',
+        '  </div>',
+        '</div>'
+      ].join('\n');
 
-    var btnCopy = document.getElementById('btn-feedback-copy');
-    if (btnCopy) {
-      btnCopy.onclick = function() {
-        if (text) {
-          if (navigator.clipboard && navigator.clipboard.writeText) {
-            navigator.clipboard.writeText(text).then(function() {
+      var colorizedDiffsHtml = '';
+      if (isColorEnabled && fileDiffs.length > 0 && typeof CodeDiffer !== 'undefined') {
+        colorizedDiffsHtml = '<div id="feedback-diffs-summary" style="display:flex; flex-direction:column; gap:0.35rem; margin-bottom:0.5rem;">';
+        colorizedDiffsHtml += '  <div style="font-size:0.72rem; color:#8b949e; font-weight:bold; text-transform:uppercase; letter-spacing:0.5px;">Applied File Modifications (click to inspect individual diff):</div>';
+
+        fileDiffs.forEach(function(diffItem, dIdx) {
+          var fileName = diffItem.filePath.split('/').pop() || diffItem.filePath;
+          var pills = CodeDiffer.createStatsPills(diffItem.linesRemoved || 0, diffItem.linesAdded || 0, diffItem.byteDelta || 0);
+          var isServer = (diffItem.mode === 'server-script');
+          var isPatch = (diffItem.mode === 'surgical-patch' || diffItem.mode === 'direct-ast-apply');
+          var modeBadge = isServer ? '<span style="color:#e3b341; font-size:0.68rem; font-weight:bold;">[Server Script]</span>' : (isPatch ? '<span style="color:#00f2fe; font-size:0.68rem; font-weight:bold;">[AST Patch]</span>' : '<span style="color:#58a6ff; font-size:0.68rem;">[Full File]</span>');
+
+          colorizedDiffsHtml += [
+            '<div class="feedback-file-diff-row" data-diff-index="' + dIdx + '" style="background:#070a13; border:1px solid #21262d; border-radius:6px; padding:0.4rem 0.65rem; display:flex; justify-content:space-between; align-items:center; cursor:pointer; transition:border-color 0.15s ease; gap:0.4rem; flex-wrap:wrap;">',
+            '  <div style="display:flex; align-items:center; gap:0.45rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">',
+            '    <span class="feedback-file-jump-link" data-path="' + diffItem.filePath + '" style="color:#58a6ff; font-weight:bold; font-size:0.78rem; text-decoration:underline; cursor:pointer;" title="Click to view file in File Manager">' + fileName + '</span>',
+            '    <span style="color:#8b949e; font-size:0.68rem;">(' + diffItem.filePath + ')</span>',
+            '    ' + modeBadge,
+            '  </div>',
+            '  <div style="display:flex; gap:0.4rem; align-items:center;">',
+            '    ' + pills,
+            '    <button class="btn-diff-item-preview" data-diff-index="' + dIdx + '" style="padding:0.15rem 0.45rem; font-size:0.68rem; background:#161b22; color:#00f2fe; border:1px solid #00f2fe66; border-radius:4px; cursor:pointer; font-family:monospace; font-weight:bold;">🔍 Diff</button>',
+            '  </div>',
+            '</div>'
+          ].join('\n');
+        });
+        colorizedDiffsHtml += '</div>';
+      }
+
+      var preHtml = '<pre id="feedback-text-area" style="white-space:pre-wrap; word-break:break-all; font-family:monospace; font-size:0.78rem; max-height:240px; overflow-y:auto; margin:0; padding:0.5rem; background:#070a13; border:1px solid #21262d; border-radius:6px;"></pre>';
+
+      box.innerHTML = headerHtml + colorizedDiffsHtml + preHtml;
+
+      var textEl = document.getElementById('feedback-text-area');
+      if (textEl) textEl.textContent = rawText;
+
+      var btnInspectAll = document.getElementById('btn-feedback-inspect-diffs');
+      if (btnInspectAll && typeof DiffApprovalModal !== 'undefined') {
+        btnInspectAll.onclick = function() {
+          DiffApprovalModal.open({
+            payloadText: rawText,
+            fileDiffs: fileDiffs,
+            onConfirm: function() {
+              ClientApp.showToast('Diff inspection completed.', 'info');
+            }
+          });
+        };
+      }
+
+      var diffPreviewBtns = box.querySelectorAll('.btn-diff-item-preview');
+      diffPreviewBtns.forEach(function(btn) {
+        btn.onclick = function(e) {
+          e.stopPropagation();
+          var idx = parseInt(btn.dataset.diffIndex, 10);
+          var item = fileDiffs[idx];
+          if (item && typeof DiffApprovalModal !== 'undefined') {
+            DiffApprovalModal.open({
+              fileDiffs: [item],
+              onConfirm: function() {}
+            });
+          }
+        };
+      });
+
+      var jumpLinks = box.querySelectorAll('.feedback-file-jump-link');
+      jumpLinks.forEach(function(link) {
+        link.onclick = function(e) {
+          e.stopPropagation();
+          var path = link.dataset.path;
+          if (path && typeof DiskBrowser !== 'undefined' && DiskBrowser.openFileEditorModal) {
+            if (typeof LunoSpaDock !== 'undefined' && LunoSpaDock.mountView) {
+              LunoSpaDock.mountView('browser').then(function() {
+                DiskBrowser.openFileEditorModal(path);
+              });
+            } else {
+              DiskBrowser.openFileEditorModal(path);
+            }
+          }
+        };
+      });
+
+      var btnOutbox = document.getElementById('btn-feedback-outbox');
+      if (btnOutbox) {
+        btnOutbox.onclick = function() {
+          if (rawText && typeof OutboxQueue !== 'undefined' && OutboxQueue.addBundle) {
+            OutboxQueue.addBundle('Storage Execution Response Output', rawText, { priority: 'high' });
+            ClientApp.showToast('Sent execution feedback directly to Outbox!', 'success', '📤');
+          }
+        };
+      }
+
+      var btnCopy = document.getElementById('btn-feedback-copy');
+      if (btnCopy) {
+        btnCopy.onclick = function() {
+          if (rawText && navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(rawText).then(function() {
               ClientApp.showToast('Copied execution feedback to clipboard!', 'success', '📋');
             });
           }
-        }
-      };
-    }
+        };
+      }
 
-    var btnClose = document.getElementById('btn-feedback-close');
-    if (btnClose) {
-      btnClose.onclick = function() {
-        if (parentCard) parentCard.style.display = 'none';
-        else box.style.display = 'none';
-      };
+      var btnClose = document.getElementById('btn-feedback-close');
+      if (btnClose) {
+        btnClose.onclick = function() {
+          if (parentCard) parentCard.style.display = 'none';
+          else box.style.display = 'none';
+        };
+      }
     }
-  }
-
   static renderErrorRecoveryUI(err) {
     var errStack = (err && (err.stack || err.message)) || String(err);
     var root = document.getElementById('app-root') || document.body;

@@ -21,7 +21,9 @@ class LunoSettings {
       themeWidgetExpanded: true,
       acornSource: 'auto',
       hotPatchMemoryMode: true,
-      patchApplyMode: 'direct'
+      patchApplyMode: 'direct',
+      showDiffReview: true,
+      colorizedFeedback: true
     };
 
   static KEYS = {
@@ -42,7 +44,9 @@ class LunoSettings {
       themeWidgetExpanded: 'luno_theme_widget_expanded',
       acornSource: 'luno_acorn_source',
       hotPatchMemoryMode: 'luno_hotpatch_memory_mode',
-      patchApplyMode: 'luno_patch_apply_mode'
+      patchApplyMode: 'luno_patch_apply_mode',
+      showDiffReview: 'luno_show_diff_review',
+      colorizedFeedback: 'luno_colorized_feedback'
     };
   static getItem(key, fallback = null) {
     try {
@@ -97,6 +101,24 @@ class LunoSettings {
       }
     } catch (e) {}
   }
+
+  static diffReviewEnabled() {
+      var raw = LunoSettings.getItem(LunoSettings.KEYS.showDiffReview);
+      return raw !== null ? raw === 'true' : LunoSettings.DEFAULTS.showDiffReview;
+    }
+
+  static setDiffReviewEnabled(val) {
+      LunoSettings.setItem(LunoSettings.KEYS.showDiffReview, Boolean(val));
+    }
+
+  static colorizedFeedbackEnabled() {
+      var raw = LunoSettings.getItem(LunoSettings.KEYS.colorizedFeedback);
+      return raw !== null ? raw === 'true' : LunoSettings.DEFAULTS.colorizedFeedback;
+    }
+
+  static setColorizedFeedbackEnabled(val) {
+      LunoSettings.setItem(LunoSettings.KEYS.colorizedFeedback, Boolean(val));
+    }
 }
 
 globalThis.LunoSettings = LunoSettings;

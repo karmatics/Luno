@@ -903,6 +903,102 @@ class LunoClassPatcher {
 
       return classes;
     }
+
+  static patchHtmlInSource(existingHtml, targetBlockSpec, newBlockHtml, options = {}) {
+      if (!existingHtml || typeof existingHtml !== 'string') {
+        return newBlockHtml || '';
+      }
+
+      const cleanSpec = (targetBlockSpec || '').trim();
+      if (!cleanSpec) return existingHtml;
+
+      const bounds = LunoClassPatcher.findHtmlBlockBounds(existingHtml, cleanSpec);
+      const formattedBlock = (newBlockHtml || '').trim();
+
+      if (bounds) {
+        // Measure target indentation from line start
+        const lineStart = existingHtml.lastIndexOf('\n', bounds.startIdx);
+        const indentStr = existingHtml.slice(lineStart === -1 ? 0 : lineStart + 1, bounds.startIdx);
+        const indentMatch = indentStr.match(/^([ \t]*)/);
+        const baseIndent = indentMatch ? indentMatch[1] : '';
+
+        // Re-indent replacement block lines cleanly
+        const indentedBlock = formattedBlock.split('\n').map((line, idx) => {
+          if (idx === 0) return baseIndent + line.trimStart();
+          return line.trim() ? (baseIndent + line.trimStart()) : '';
+        }).join('\n');
+
+        const before = existingHtml.slice(0, lineStart === -1 ? bounds.startIdx : lineStart + 1).trimEnd();
+        const after = existingHtml.slice(bounds.endIdx).trimStart();
+        return `${before}\n\n${indentedBlock}\n\n${after}`.trim() + '\n';
+      }
+
+      if (options.allowInsert !== false) {
+        const closeBodyMatch = existingHtml.match(/<\/(main|body|article|section|div|template)>\s*$/i);
+        if (closeBodyMatch) {
+          const insertIdx = closeBodyMatch.index;
+          const before = existingHtml.slice(0, insertIdx).trimEnd();
+          const closeTag = existingHtml.slice(insertIdx);
+          return `${before}\n\n  ${formattedBlock}\n${closeTag}`;
+        }
+        return `${existingHtml.trimEnd()}\n\n${formattedBlock}\n`;
+      }
+
+      throw new Error(`[Luno HTML Guard] Target block "${cleanSpec}" not found in HTML source.`);
+  }
+
+  static findHtmlBlockBounds(htmlSource, targetBlockSpec) {
+      if (!htmlSource || !targetBlockSpec) return null;
+      const cleanSpec = targetBlockSpec.trim();
+      const escapedSpec = cleanSpec.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+      // Matches data-block, data-block-id, data-id, or id attributes
+      const attrRegex = new RegExp(`<(?:[a-zA-Z0-9\\-]+)\\b[^>]*?\\b(?:data-block|data-block-id|data-id|id)\\s*=\\s*["']${escapedSpec}["'][^>]*>`, 'i');
+      const match = htmlSource.match(attrRegex);
+      if (!match) return null;
+
+      const startIdx = match.index;
+      const tagOpenStr = match[0];
+      const tagNameMatch = tagOpenStr.match(/^<([a-zA-Z0-9\\-]+)/);
+      if (!tagNameMatch) return null;
+
+      const tagName = tagNameMatch[1].toLowerCase();
+
+      // Self-closing elements
+      if (tagOpenStr.endsWith('/>')) {
+        return { startIdx, endIdx: startIdx + tagOpenStr.length, tagName };
+      }
+
+      let depth = 1;
+      let scanIdx = startIdx + tagOpenStr.length;
+      const openTagRegex = new RegExp(`<${tagName}\\b[^>]*>`, 'gi');
+      const closeTagRegex = new RegExp(`</${tagName}\\s*>`, 'gi');
+
+      while (depth > 0 && scanIdx < htmlSource.length) {
+        openTagRegex.lastIndex = scanIdx;
+        closeTagRegex.lastIndex = scanIdx;
+
+        const nextOpen = openTagRegex.exec(htmlSource);
+        const nextClose = closeTagRegex.exec(htmlSource);
+
+        if (!nextClose) {
+          return { startIdx, endIdx: startIdx + tagOpenStr.length, tagName };
+        }
+
+        if (nextOpen && nextOpen.index < nextClose.index) {
+          depth++;
+          scanIdx = nextOpen.index + nextOpen[0].length;
+        } else {
+          depth--;
+          scanIdx = nextClose.index + nextClose[0].length;
+          if (depth === 0) {
+            return { startIdx, endIdx: scanIdx, tagName };
+          }
+        }
+      }
+
+      return null;
+  }
 }
 
 if (typeof window !== 'undefined') window.LunoClassPatcher = LunoClassPatcher;

@@ -294,7 +294,9 @@ class LunoPayloadParser {
         var innerContent = cleaned.substring(headerEndIdx + 1, closeSearchIdx).trim();
         var rawFilePath = LunoPayloadParser.getAttrValue(headerStr, 'data-file');
         var filePath = rawFilePath ? rawFilePath.replace(/\\/g, '/').replace(/^\/+/, '').trim() : '';
-        var methodSpec = LunoPayloadParser.getAttrValue(headerStr, 'data-method');
+
+        // Accept data-block as methodSpec fallback for HTML template blocks
+        var methodSpec = LunoPayloadParser.getAttrValue(headerStr, 'data-method') || LunoPayloadParser.getAttrValue(headerStr, 'data-block');
         var action = LunoPayloadParser.getAttrValue(headerStr, 'data-action') || 'write';
         var typeAttr = LunoPayloadParser.getAttrValue(headerStr, 'type');
 
@@ -342,19 +344,10 @@ class LunoPayloadParser {
                   closeSearchIdx = nextCloseIdx;
                   closeEndIdx = afterNext;
                   isValid = true;
-                  var warnMsg = 'Recovered boundary for <script data-file="' + filePath + '"> by advancing to boundary offset ' + nextCloseIdx;
-                  debugLogs.push(warnMsg);
-                  if (typeof LunoPlaybackLogger !== 'undefined' && typeof LunoPlaybackLogger.warn === 'function') {
-                    LunoPlaybackLogger.warn('Parser Boundary Recovery', warnMsg);
-                  }
                   break;
                 }
               }
               nextCloseIdx = cleaned.indexOf(closeTag, nextCloseIdx + closeTag.length);
-            }
-
-            if (!isValid) {
-              debugLogs.push('Script container for "' + (filePath || 'anonymous') + '" generated AST syntax warnings during boundary scan');
             }
           }
         }
@@ -373,7 +366,7 @@ class LunoPayloadParser {
       }
 
       return { files, serverScript, clientScript, requests, debugLogs };
-  }
+    }
   static parsePatchLog(patchLogHtml) {
     return LunoPayloadParser.parse(patchLogHtml);
   }

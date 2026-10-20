@@ -58,15 +58,30 @@ class MicroApprovalBadge {
       }
 
       let lineStats = `<span style="color:#8b949e;">📄 ${m.totalLines} lines</span>`;
+      let inspectPill = (m.targets > 0 && typeof DiffApprovalModal !== 'undefined')
+        ? `<span class="badge-inspect-link" style="color:#00f2fe; background:#003847; padding:0.1rem 0.4rem; border-radius:4px; font-weight:bold; cursor:pointer;" title="Click to inspect diffs now">🔍 Inspect</span>`
+        : '';
 
       el.innerHTML = `
         <span style="display:inline-flex; align-items:center; gap:0.4rem; background:#0d1117; border:1px solid #30363d; padding:0.2rem 0.5rem; border-radius:12px; font-size:0.72rem; font-family:monospace; flex-wrap:wrap;">
           ${badges.join('<span style="color:#30363d;">|</span>')}
           ${badges.length > 0 ? '<span style="color:#30363d;">|</span>' : ''}
           ${lineStats}
+          ${inspectPill ? ('<span style="color:#30363d;">|</span>' + inspectPill) : ''}
         </span>
       `;
-  }
+
+      const inspectBtn = el.querySelector('.badge-inspect-link');
+      if (inspectBtn) {
+        inspectBtn.onclick = (e) => {
+          e.stopPropagation();
+          DiffApprovalModal.open({
+            payloadText: payloadText,
+            onConfirm: () => {}
+          });
+        };
+      }
+    }
 }
 
 globalThis.MicroApprovalBadge = MicroApprovalBadge;

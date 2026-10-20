@@ -92,31 +92,28 @@ class ClientAppPaster {
                                (rawPayload.requests && rawPayload.requests.length > 0);
 
         if (!hasRawContainers && rawText.trim().length > 20) {
-          var zeroWarn = '⚠️ PARSER WARNING: Input payload contained ' + rawText.trim().length + ' characters, but 0 valid HTML containers (<script>, <style>, <template>, <svg>) were detected.\n\n' +
+          var zeroWarn = '⚠️ PARSER WARNING: Input payload contained ' + rawText.trim().length + ' characters, but 0 valid HTML containers were detected.\n\n' +
             'Please ensure container tags are properly formatted:\n' +
             '• Surgical Patch: <script data-file="' + (targetProj || 'Project') + '/path/to/file.js" data-method="ClassName.methodName" data-action="patch">\n' +
             '• Full File Write: <script data-file="' + (targetProj || 'Project') + '/path/to/file.js">\n' +
-            '• Server Script: <script data-file="RUN: SERVER" data-action="run-server">\n' +
-            '• Client Script: <script data-file="RUN: CLIENT" data-action="run-client">';
+            '• Server Script: <script data-file="RUN: SERVER" data-action="run-server">';
 
-          if (targetApp && targetApp.showFeedback) {
-            targetApp.showFeedback(zeroWarn, 'error');
-          }
-          if (targetApp && targetApp.showToast) {
-            targetApp.showToast('0 HTML Containers Found in ' + rawText.trim().length + ' chars!', 'error', '⚠️');
-          }
-          if (typeof LunoPlaybackLogger !== 'undefined') {
-            LunoPlaybackLogger.warn('Zero Containers Parsed', rawText.slice(0, 80) + '...');
-          }
+          if (targetApp && targetApp.showFeedback) targetApp.showFeedback(zeroWarn, 'error');
+          if (targetApp && targetApp.showToast) targetApp.showToast('0 HTML Containers Found!', 'error', '⚠️');
           return;
         }
 
-        if (rawPayload.files && rawPayload.files.length > 0) {
-          for (var s = 0; s < rawPayload.files.length; s++) {
-            var fItem = rawPayload.files[s];
-            if (fItem.tagName === 'svg' || (fItem.filePath && fItem.filePath.toLowerCase().endsWith('.svg'))) {
-              if (typeof LunoSvgStudio !== 'undefined' && LunoSvgStudio.loadSvgPayload) {
-                LunoSvgStudio.loadSvgPayload(fItem.content, fItem.filePath);
+        // Capture previous file contents for diffs
+        var originalFileContents = new Map();
+        if (Array.isArray(rawPayload.files)) {
+          for (var pIdx = 0; pIdx < rawPayload.files.length; pIdx++) {
+            var rawFileObj = rawPayload.files[pIdx];
+            if (rawFileObj && rawFileObj.filePath && !originalFileContents.has(rawFileObj.filePath)) {
+              try {
+                var preRead = await LunoApiClient.fetchFsRead(rawFileObj.filePath, targetProj);
+                originalFileContents.set(rawFileObj.filePath, (preRead && preRead.success && preRead.content !== undefined) ? preRead.content : '');
+              } catch (e) {
+                originalFileContents.set(rawFileObj.filePath, '');
               }
             }
           }
@@ -126,9 +123,7 @@ class ClientAppPaster {
         try {
           if (typeof LunoApiClient !== 'undefined' && LunoApiClient.fetchFsRead) {
             var metaRes = await LunoApiClient.fetchFsRead('luno.json', targetProj);
-            if (metaRes && metaRes.content) {
-              lunoMeta = JSON.parse(metaRes.content);
-            }
+            if (metaRes && metaRes.content) lunoMeta = JSON.parse(metaRes.content);
           }
         } catch (e) {}
 
@@ -141,130 +136,108 @@ class ClientAppPaster {
           finalPayload.project = targetProj;
         }
 
-        var activeMode = finalPayload.patchMode || (typeof LunoSettings !== 'undefined' && LunoSettings.getPatchApplyMode ? LunoSettings.getPatchApplyMode() : 'direct');
-        var isDirectAutoApply = (activeMode === 'direct');
+        // Calculate diffs and byte metrics
+        var calculatedFileDiffs = [];
+        if (typeof CodeDiffer !== 'undefined' && Array.isArray(finalPayload.files)) {
+          finalPayload.files.forEach(function(savedFile) {
+            var oldStr = originalFileContents.get(savedFile.filePath) || '';
+            var newStr = savedFile.content || '';
+            var diffAnalysis = CodeDiffer.analyzeDiff(oldStr, newStr, savedFile.filePath);
 
-        var clientSummary = "🔍 CLIENT BROWSER PARSER SUMMARY (HTML Container Protocol):\n";
-        clientSummary += "• Target Project: " + (targetProj || "Luno") + "\n";
-        clientSummary += "• Patch Workflow Mode: " + (isDirectAutoApply ? "⚡ Auto-Apply to Files (Client AST Direct Merge)" : "🧩 Journal to Patch Log (LunoPatchLog.html)") + "\n";
-        clientSummary += "• HTML Containers Processed: " + (rawPayload.files ? rawPayload.files.length : finalPayload.files.length) + " container(s)\n";
-
-        if (Array.isArray(finalPayload.patchActionsSummary) && finalPayload.patchActionsSummary.length > 0) {
-          finalPayload.patchActionsSummary.forEach(function(act, idx) {
-            var badge = '[Full File Write]';
-            if (!act.success || act.mode === 'failed') {
-              badge = '[❌ FAILED: ' + (act.error || 'Syntax/Target Error') + ']';
-            } else if (act.mode === 'direct-ast-apply') {
-              badge = '[Client AST Direct Merge -> File]';
-            } else if (act.mode === 'patchlog-journal') {
-              badge = '[Patch Log Journal -> LunoPatchLog.html]';
-            } else if (act.mode === 'json-merge') {
-              badge = '[Client JSON Merge]';
-            }
-
-            clientSummary += "  " + (idx + 1) + ". " + act.path + (act.target && act.target !== act.path ? (" @ " + act.target) : "") + " " + badge + "\n";
-          });
-        }
-
-        var failedCount = (finalPayload.failedPatches && finalPayload.failedPatches.length) || 0;
-        var successCount = finalPayload.files ? finalPayload.files.length : 0;
-
-        if (failedCount > 0) {
-          clientSummary += "\n⚠️ Notice: " + failedCount + " patch(es) failed and were safely skipped. " + successCount + " valid file(s) are being saved.\n";
-        }
-
-        if (finalPayload.serverScript) {
-          clientSummary += "• Server Script Detected (" + finalPayload.serverScript.length + " bytes)\n";
-        }
-
-        // Execute Client Script live in browser context if present
-        var clientExecutionFeedback = "";
-        if (finalPayload.clientScript && finalPayload.clientScript.trim()) {
-          clientSummary += "• Client Script Detected (" + finalPayload.clientScript.length + " bytes)\n";
-          try {
-            var AsyncFunction = Object.getPrototypeOf(async function(){}).constructor;
-            var clientFn = new AsyncFunction('UITools', 'ClientApp', 'LunoApiClient', finalPayload.clientScript);
-            var clientRes = await clientFn(globalThis.UITools, globalThis.ClientApp, globalThis.LunoApiClient);
-            var formattedRes = typeof clientRes === 'object' ? JSON.stringify(clientRes, null, 2) : String(clientRes);
-            clientExecutionFeedback = "🖥️ CLIENT SCRIPT OUTPUT:\n" + (formattedRes !== 'undefined' ? formattedRes : 'Executed successfully with no return value.') + "\n\n";
-            if (targetApp && targetApp.showToast) {
-              targetApp.showToast('Executed Client Script successfully!', 'success', '🖥️');
-            }
-          } catch (clientErr) {
-            clientExecutionFeedback = "❌ CLIENT SCRIPT ERROR:\n" + (clientErr.stack || clientErr.message) + "\n\n";
-            if (targetApp && targetApp.showToast) {
-              targetApp.showToast('Client Script Error: ' + clientErr.message, 'error', '❌');
-            }
-          }
-        }
-
-        clientSummary += "\nℹ️ Note: All AST method parsing & patch compilation executed 100% on client browser JavaScript.\n";
-
-        var pasteBtn = document.getElementById('btn-paste-chatbot');
-        var feedbackCard = document.getElementById('feedback-card');
-        if (pasteBtn && feedbackCard && typeof LunoAnimationEngine !== 'undefined') {
-          LunoAnimationEngine.flyElement(pasteBtn, feedbackCard, {
-            label: '📥 Applying Payload (' + (successCount || (finalPayload.serverScript ? 1 : (finalPayload.clientScript ? 1 : 0))) + ' targets)',
-            color: failedCount > 0 ? '#ff9800' : '#3fb950',
-            glowColor: failedCount > 0 ? 'rgba(255, 152, 0, 0.85)' : 'rgba(63, 185, 80, 0.85)',
-            icon: '⚡',
-            duration: 550
-          });
-        }
-
-        if (targetApp && targetApp.showFeedback) {
-          targetApp.showFeedback(clientSummary + (clientExecutionFeedback ? ("\n" + clientExecutionFeedback) : ""), failedCount > 0 ? "info" : "info");
-        }
-
-        if (targetApp && targetApp.showToast) {
-          targetApp.showToast('Applying payload to [' + (targetProj || 'Luno') + ']...', 'info', '⚡');
-        }
-
-        var data = null;
-        if (successCount > 0 || finalPayload.serverScript) {
-          if (typeof LunoApiClient !== 'undefined' && LunoApiClient.savePayload) {
-            data = await LunoApiClient.savePayload(finalPayload, targetProj);
-          } else {
-            var pParam = targetProj ? ('?project=' + encodeURIComponent(targetProj)) : '';
-            var res = await fetch("/api/save" + pParam, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify(finalPayload)
+            var summaryMatch = (finalPayload.patchActionsSummary || []).find(function(s) {
+              return s.path === savedFile.filePath || s.path.endsWith(savedFile.filePath);
             });
-            data = await res.json();
+
+            calculatedFileDiffs.push({
+              filePath: savedFile.filePath,
+              target: summaryMatch ? (summaryMatch.target || savedFile.filePath) : savedFile.filePath,
+              mode: summaryMatch ? (summaryMatch.mode || 'direct-ast-apply') : 'full-file',
+              oldContent: oldStr,
+              newContent: newStr,
+              linesAdded: diffAnalysis.linesAdded,
+              linesRemoved: diffAnalysis.linesRemoved,
+              bytesBefore: diffAnalysis.bytesBefore,
+              bytesAfter: diffAnalysis.bytesAfter,
+              byteDelta: diffAnalysis.byteDelta
+            });
+          });
+        }
+
+        // Optional Diff Review Modal (only stops if diffReviewEnabled is ON and autoApprove is OFF)
+        var isDiffReviewEnabled = (typeof LunoSettings !== 'undefined' && LunoSettings.diffReviewEnabled ? LunoSettings.diffReviewEnabled() : false);
+        var autoApprove = (typeof ClientApp !== 'undefined' && ClientApp.autoApprove);
+
+        if (isDiffReviewEnabled && !autoApprove && calculatedFileDiffs.length > 0 && typeof DiffApprovalModal !== 'undefined') {
+          var proceedWithSave = await new Promise(function(resolve) {
+            DiffApprovalModal.open({
+              payloadText: rawText,
+              rawPayload: rawPayload,
+              fileDiffs: calculatedFileDiffs,
+              onConfirm: function(res) { resolve(res || true); },
+              onCancel: function() { resolve(false); }
+            });
+          });
+
+          if (!proceedWithSave) {
+            if (targetApp && targetApp.showToast) targetApp.showToast('Payload cancelled by user.', 'info', '⏸️');
+            return;
           }
-        } else if (finalPayload.clientScript) {
-          data = { success: true, count: 0, modifiedCount: 0, llmFeedback: 'Client script executed cleanly in browser.' };
+
+          if (proceedWithSave && proceedWithSave.filteredPayload && typeof LunoManifestDecisionEngine !== 'undefined') {
+            finalPayload = await LunoManifestDecisionEngine.processPayload(proceedWithSave.filteredPayload, lunoMeta, targetProj);
+            if (finalPayload.files.length === 0 && !finalPayload.serverScript) {
+              if (targetApp && targetApp.showToast) targetApp.showToast('All changes were discarded.', 'info', '🧹');
+              return;
+            }
+          }
+        }
+
+        // Build structured client summary with explicit line additions/removals
+        var clientSummary = "🔍 CLIENT PARSER SUMMARY:\n• Target: " + (targetProj || "Luno") + "\n";
+        clientSummary += "• Containers: " + (rawPayload.files ? rawPayload.files.length : finalPayload.files.length) + "\n";
+
+        if (Array.isArray(calculatedFileDiffs) && calculatedFileDiffs.length > 0) {
+          clientSummary += "• File Modifications & Line Diffs:\n";
+          calculatedFileDiffs.forEach(function(diffItem, idx) {
+            var sign = diffItem.byteDelta > 0 ? '+' : '';
+            var statsStr = '(+' + (diffItem.linesAdded || 0) + ' / -' + (diffItem.linesRemoved || 0) + ' lines, ' + sign + (diffItem.byteDelta || 0) + ' B)';
+            var isPatch = (diffItem.mode === 'direct-ast-apply' || diffItem.mode === 'surgical-patch');
+            var badge = isPatch ? '[AST Merge]' : (diffItem.mode === 'json-merge' ? '[JSON Merge]' : '[Full File]');
+            clientSummary += "  " + (idx + 1) + ". " + diffItem.filePath + " " + statsStr + " " + badge + "\n";
+          });
+        } else if (Array.isArray(finalPayload.patchActionsSummary)) {
+          finalPayload.patchActionsSummary.forEach(function(act, idx) {
+            var badge = act.mode === 'direct-ast-apply' ? '[AST Merge]' : (act.mode === 'json-merge' ? '[JSON Merge]' : '[Full File]');
+            clientSummary += "  " + (idx + 1) + ". " + act.path + " " + badge + "\n";
+          });
+        }
+
+        // Apply changes to storage
+        var data = null;
+        if (finalPayload.files && finalPayload.files.length > 0) {
+          data = await LunoApiClient.savePayload(finalPayload, targetProj);
         } else {
-          data = { success: false, error: 'All patches in payload failed validation.', modifiedCount: 0 };
+          data = { success: true, count: 0, modifiedCount: 0 };
         }
 
-        var finalFeedback = clientSummary + (clientExecutionFeedback ? ("\n" + clientExecutionFeedback) : "") + "📊 STORAGE EXECUTION RESPONSE:\n" + (data.llmFeedback || JSON.stringify(data, null, 2));
+        var finalFeedback = clientSummary + "\n📊 EXECUTION RESPONSE:\n" + (data.llmFeedback || JSON.stringify(data, null, 2));
 
+        // Display execution feedback automatically on the home screen
         if (targetApp && targetApp.showFeedback) {
-          targetApp.showFeedback(finalFeedback, data && data.success ? (failedCount > 0 ? "info" : "success") : "error");
-        }
-
-        if (feedbackCard && typeof LunoAnimationEngine !== 'undefined') {
-          LunoAnimationEngine.pulseTarget(feedbackCard, {
-            color: data && data.success ? (failedCount > 0 ? '#ff9800' : '#00f2fe') : '#ff7b72',
-            glowColor: data && data.success ? (failedCount > 0 ? 'rgba(255, 152, 0, 0.7)' : 'rgba(0, 242, 254, 0.7)') : 'rgba(255, 123, 114, 0.7)'
+          targetApp.showFeedback(finalFeedback, data && data.success ? "success" : "error", {
+            fileDiffs: calculatedFileDiffs
           });
         }
 
         if (data && data.success) {
           if (input) input.value = "";
 
+          if (typeof LunoHistoryManager !== 'undefined' && calculatedFileDiffs.length > 0) {
+            LunoHistoryManager.recordChanges(calculatedFileDiffs, targetProj).catch(function() {});
+          }
+
           if (typeof LunoLoader !== 'undefined' && LunoLoader.applyPatchLog) {
             await LunoLoader.applyPatchLog(targetProj);
-          }
-
-          if (typeof OutboxQueue !== 'undefined' && OutboxQueue.renderWidget) {
-            try { OutboxQueue.renderWidget(); } catch(e){}
-          }
-
-          if (typeof LunoSpaDock !== 'undefined' && LunoSpaDock.reloadActivePreviewIframe) {
-            LunoSpaDock.reloadActivePreviewIframe(targetProj);
           }
 
           if (typeof ClientApp !== 'undefined' && ClientApp.fetchCodebaseMetrics) {
@@ -272,31 +245,19 @@ class ClientAppPaster {
           }
 
           if (targetApp && targetApp.showToast) {
-            var modCount = data.modifiedCount !== undefined ? data.modifiedCount : (data.count || 0);
-            if (failedCount > 0) {
-              targetApp.showToast('Saved ' + modCount + ' file(s) (' + failedCount + ' invalid patch(es) skipped)', 'info', '⚠️');
-            } else if (modCount > 0) {
-              var modeDesc = isDirectAutoApply ? 'Directly Merged & Saved' : 'Journaled & Saved';
-              targetApp.showToast(modeDesc + ' ' + modCount + ' file(s) in [' + (targetProj || 'Luno') + ']!', 'success', '💾');
-            } else if (finalPayload.clientScript) {
-              targetApp.showToast('Client script executed in browser!', 'success', '🖥️');
-            } else {
-              targetApp.showToast('Evaluated: Target(s) up-to-date.', 'info', 'ℹ️');
-            }
+            var totalAdd = calculatedFileDiffs.reduce(function(s, d) { return s + (d.linesAdded || 0); }, 0);
+            var totalRem = calculatedFileDiffs.reduce(function(s, d) { return s + (d.linesRemoved || 0); }, 0);
+            var toastDiff = calculatedFileDiffs.length > 0 ? (' (+' + totalAdd + '/-' + totalRem + ' LOC)') : '';
+            targetApp.showToast('Saved ' + (data.modifiedCount || data.count || 0) + ' file(s)' + toastDiff + '!', 'success', '💾');
           }
         } else {
-          throw new Error((data && data.error) || 'Save operation failed in storage');
+          throw new Error((data && data.error) || 'Save failed');
         }
       } catch (err) {
-        console.error('[ClientAppPaster Exception]', err);
-        if (targetApp && targetApp.showFeedback) {
-          targetApp.showFeedback("❌ Save Error: " + err.message + "\n\n" + (err.stack || ""), "error");
-        }
-        if (targetApp && targetApp.showToast) {
-          targetApp.showToast("Save Error: " + err.message, "error", "❌");
-        }
+        if (targetApp && targetApp.showFeedback) targetApp.showFeedback("❌ Error: " + err.message, "error");
+        if (targetApp && targetApp.showToast) targetApp.showToast("Save Error: " + err.message, "error", "❌");
       }
-  }
+    }
 }
 
 globalThis.ClientAppPaster = ClientAppPaster;

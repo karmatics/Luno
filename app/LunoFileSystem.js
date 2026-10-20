@@ -101,6 +101,7 @@ class LunoIndexedDbAdapter {
 
       return null;
     }
+
   static normalizeKey(filePath, projectName) {
       let clean = (filePath || '').replace(/\\/g, '/').replace(/^\/+/, '').trim();
       if (clean.startsWith('Luno Workspace/')) clean = clean.slice(15).trim();
@@ -121,7 +122,8 @@ class LunoIndexedDbAdapter {
             'Basic3D', 'BasicsWithDialogBox', 'BookmarkletWorkshop', 'BulbAndButton', 'Calculator',
             'Es6Converter', 'LegoDetective', 'LunoParser', 'LunoTests', 'MathStorm', 'Penrose', 'PleasureAndPain',
             'RobotDividend', 'SvgStudio', 'TriBlob', 'ValuationOfAccudraw', 'accuCad', 'accudraw',
-            'guessTheNoteGame', 'situation', 'squircle', 'Squircle', 'teacup', 'Library', 'Luno'
+            'guessTheNoteGame', 'situation', 'squircle', 'Squircle', 'teacup', 'Library', 'Luno',
+            'CadPlan', 'TouchController', 'CompassApp', 'KeyCommandApp'
           ];
           if (knownSiblings.includes(firstSeg) || (proj && firstSeg.toLowerCase() === proj.toLowerCase())) {
             proj = firstSeg;
@@ -135,7 +137,6 @@ class LunoIndexedDbAdapter {
 
       return { id: proj + '::' + clean, project: proj, path: clean };
     }
-
   static async read(filePath, projectName) {
       const db = await LunoIndexedDbAdapter.getDb();
       const key = LunoIndexedDbAdapter.normalizeKey(filePath, projectName);
