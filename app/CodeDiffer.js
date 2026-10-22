@@ -216,6 +216,16 @@ class CodeDiffer {
     });
     return spans;
   }
+
+  static fastHash(str) {
+      if (!str || typeof str !== 'string') return 0;
+      var hash = 0;
+      for (var i = 0; i < str.length; i++) {
+        hash = ((hash << 5) - hash) + str.charCodeAt(i);
+        hash |= 0;
+      }
+      return Math.abs(hash).toString(36);
+    }
 }
 
 globalThis.CodeDiffer = CodeDiffer;
