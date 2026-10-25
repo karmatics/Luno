@@ -89,7 +89,32 @@ class ClientAppUI {
         el('span', { style: { fontSize: '0.72rem', color: 'var(--text-secondary, #8b949e)', lineHeight: '1.3' } }, 'Switch, preview & deploy.')
       ));
 
-      // Card 3: Self-Improve Luno
+      // Card 3: Download All Repos
+      cards.push(el('div', {
+        className: 'luno-starter-card',
+        style: {
+          background: 'var(--bg-secondary, #0d1117)',
+          border: '1px solid var(--border-color, #30363d)',
+          borderRadius: '8px',
+          padding: '0.75rem',
+          cursor: 'pointer',
+          flex: '1 1 140px',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '0.25rem',
+          transition: 'transform 0.15s ease, border-color 0.15s ease'
+        },
+        onclick: function() {
+          if (typeof LunoZipExporter !== 'undefined') {
+            LunoZipExporter.downloadAllProjectsAsZip();
+          }
+        }
+      },
+        el('strong', { style: { color: '#f7df1e', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '0.3rem' } }, '📦 All Repos (.ZIP)'),
+        el('span', { style: { fontSize: '0.72rem', color: 'var(--text-secondary, #8b949e)', lineHeight: '1.3' } }, '1-tap download of all repos.')
+      ));
+
+      // Card 4: Self-Improve Luno
       cards.push(el('div', {
         className: 'luno-starter-card',
         style: {
@@ -149,7 +174,6 @@ class ClientAppUI {
         el('div', { style: { display: 'flex', gap: '0.5rem', flexWrap: 'wrap' } }, ...cards)
       );
     }
-
   static renderOutboxCard(m) {
       var el = m || (typeof LunoUIComponents !== 'undefined' ? LunoUIComponents.makeElement : null);
       ClientAppUI.outboxExpanded = true;
@@ -471,6 +495,26 @@ class ClientAppUI {
         }
       }, '⏳ History');
 
+      var btnBackupAll = el('button', {
+        style: { background: '#271052', border: '1px solid #8257e5', color: '#f7df1e', borderRadius: '4px', cursor: 'pointer', fontSize: '0.7rem', padding: '0.15rem 0.45rem', fontWeight: 'bold', fontFamily: 'monospace' },
+        title: 'Download complete backup of all projects in a single ZIP file',
+        onclick: function() {
+          if (typeof LunoZipExporter !== 'undefined') {
+            LunoZipExporter.downloadAllProjectsAsZip();
+          }
+        }
+      }, '📦 Backup All (.ZIP)');
+
+      var btnCloneScript = el('button', {
+        style: { background: '#161b22', border: '1px solid #30363d', color: '#58a6ff', borderRadius: '4px', cursor: 'pointer', fontSize: '0.7rem', padding: '0.15rem 0.45rem', fontWeight: 'bold', fontFamily: 'monospace' },
+        title: 'Download shell script to clone/pull all repositories on another machine',
+        onclick: function() {
+          if (typeof LunoZipExporter !== 'undefined') {
+            LunoZipExporter.downloadCloneScript();
+          }
+        }
+      }, '📜 Clone Script');
+
       var container = el('div', {
         id: 'luno-target-checkpoint-card',
         style: {
@@ -492,8 +536,10 @@ class ClientAppUI {
             el('strong', { style: { color: 'var(--text-accent, #00f2fe)', fontSize: '0.9rem' } }, '📸 CHECKPOINT & DEPLOY:'),
             el('span', { style: { color: 'var(--accent-green, #3fb950)', fontWeight: 'bold', fontSize: '0.85rem' } }, currentTarget)
           ),
-          el('div', { style: { display: 'flex', gap: '0.4rem', alignItems: 'center' } },
+          el('div', { style: { display: 'flex', gap: '0.4rem', alignItems: 'center', flexWrap: 'wrap' } },
             btnTimeline,
+            btnBackupAll,
+            btnCloneScript,
             el('button', {
               style: { background: '#271052', border: '1px solid #8257e5', color: '#d2a8ff', borderRadius: '4px', cursor: 'pointer', fontSize: '0.7rem', padding: '0.15rem 0.45rem', fontWeight: 'bold', fontFamily: 'monospace' },
               title: 'Update GitHub Personal Access Token (PAT)',

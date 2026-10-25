@@ -94,7 +94,7 @@
       "app/InboxActionTimer.js"
     ]
   },
-  "processedCountSinceCheckpoint": 7,
+  "processedCountSinceCheckpoint": 20,
   "changedMethods": {
     "Comments/js/Comments.js": "2026-10-21T21:59:29.105Z",
     "Comments/js/CommentsInteractiveComponent.js": "2026-10-21T21:59:29.105Z",
@@ -102,6 +102,25 @@
     "Comments/js/CommentsAuthIdentityContent.js": "2026-10-21T21:59:29.105Z",
     "Comments/js/RatingPanel.js": "2026-10-21T21:59:29.105Z",
     "Comments/js/CommentsAiModerationContent.js": "2026-10-21T21:59:29.105Z",
-    "Comments/js/CommentsDeploymentKitContent.js": "2026-10-21T21:59:29.105Z"
-  }
+    "Comments/js/CommentsDeploymentKitContent.js": "2026-10-21T21:59:29.105Z",
+    "Voting/luno.json": "2026-10-24T20:50:09.694Z",
+    "Voting/files.json": "2026-10-24T20:50:09.694Z",
+    "Voting/src/RankedChoiceApp.js": "2026-10-24T20:50:09.694Z",
+    "Voting/src/PairwiseMatrixWidget.js": "2026-10-24T20:50:09.694Z",
+    "Voting/src/ElectionData.js": "2026-10-24T20:50:09.694Z",
+    "Voting/src/CondorcetTabulator.js": "2026-10-24T20:50:09.694Z",
+    "Voting/src/PairwiseCalculator.js": "2026-10-24T20:50:09.694Z",
+    "Voting/src/Minimax.js": "2026-10-24T20:50:09.694Z",
+    "Voting/src/IRV.js": "2026-10-24T20:50:09.694Z",
+    "Voting/src/IrvTabulator.js": "2026-10-24T20:50:09.694Z",
+    "Voting/src/InstantRunoffWidget.js": "2026-10-24T20:50:09.694Z",
+    "Voting/src/SankeyDiagram.js": "2026-10-24T20:50:09.694Z",
+    "Voting/src/ThemeManager.js": "2026-10-24T20:50:09.694Z",
+    "HomeSetup/js/HomeHandoffComponent.js": "2026-10-25T05:29:41.602Z",
+    "HomeSetup/js/HomeNetworkContent.js": "2026-10-25T04:44:01.745Z",
+    "HomeSetup/content/network.html": "2026-10-25T04:44:01.745Z",
+    "HomeSetup/content/handoff.html": "2026-10-25T05:29:41.602Z"
+  },
+  "lastCheckpointTime": "2026-10-22T23:40:31.940Z",
+  "pendingCheckpointDescription": "Clean working tree"
 }

@@ -41,12 +41,13 @@ function startServers() {
   console.log(C_CYAN + '================================================' + C_RESET);
 
   if (fs.existsSync(lunoDir)) {
+    // Bind to 0.0.0.0 so both localhost and cross-machine LAN access function
     lunoProcess = spawn('node', ['server.js'], {
       cwd: lunoDir,
-      env: Object.assign({}, process.env, { PORT: '8080', HOST: '127.0.0.1' }),
+      env: Object.assign({}, process.env, { PORT: '8080', HOST: '0.0.0.0' }),
       stdio: 'inherit'
     });
-    console.log(C_GREEN + '  ✅ Luno Workspace Server -> http://127.0.0.1:8080' + C_RESET);
+    console.log(C_GREEN + '  ✅ Luno Workspace Server -> http://0.0.0.0:8080 (LAN Accessible)' + C_RESET);
     console.log(C_CYAN + '     Root Directory: ' + lunoDir + C_RESET);
   }
 

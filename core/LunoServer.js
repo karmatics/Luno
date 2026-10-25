@@ -956,141 +956,182 @@ class LunoServer {
   }
 
   static async handle(req, res) {
-      try {
-        const url = new URL(req.url, 'http://' + (req.headers.host || '127.0.0.1:8080'));
-        const method = req.method.toUpperCase();
-        const webRoot = LunoServer.getWebRootDir();
+          try {
+            const url = new URL(req.url, 'http://' + (req.headers.host || '127.0.0.1:8080'));
+            const method = req.method.toUpperCase();
+            const webRoot = LunoServer.getWebRootDir();
 
-        const origin = req.headers.origin;
-        if (origin) {
-          res.setHeader('Access-Control-Allow-Origin', origin);
-          res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, PUT, DELETE');
-          res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-Luno-Client, Authorization');
-          res.setHeader('Access-Control-Allow-Credentials', 'true');
-        }
+            const origin = req.headers.origin;
+            if (origin) {
+              res.setHeader('Access-Control-Allow-Origin', origin);
+              res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, PUT, DELETE');
+              res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-Luno-Client, Authorization');
+              res.setHeader('Access-Control-Allow-Credentials', 'true');
+            }
 
-        if (method === 'OPTIONS') {
-          res.writeHead(204);
-          return res.end();
-        }
-
-        if (origin && !origin.startsWith('http://localhost') && !origin.startsWith('http://127.0.0.1')) {
-          res.writeHead(403, { 'Content-Type': 'application/json' });
-          return res.end(JSON.stringify({ success: false, error: 'Forbidden: cross-origin request rejected' }));
-        }
-
-        if (method === 'GET' && (url.pathname === '/' || url.pathname === '/index.html' || url.pathname === '/full' || url.pathname === '/ui/1' || url.pathname === '/ui/full')) {
-          return LunoServer.serveIndex(req, res);
-        }
-
-        if (method === 'GET' && (url.pathname === '/app-preview' || url.pathname === '/app-preview/index.html')) {
-          const targetProj = url.searchParams.get('project') || 'Luno';
-          res.writeHead(302, { 'Location': '/' + encodeURIComponent(targetProj) + '/' });
-          return res.end();
-        }
-
-        const pathParts = url.pathname.split('/').filter(Boolean);
-        const firstSegment = pathParts[0] || '';
-        const isSystemRoute = ['api', 'assets', 'app', 'core', 'browser', 'docs', 'test', 'library'].includes(firstSegment.toLowerCase());
-
-        if (!isSystemRoute && firstSegment) {
-          const candidateProjDir = path.join(webRoot, firstSegment);
-          if (fs.existsSync(candidateProjDir) && fs.statSync(candidateProjDir).isDirectory()) {
-            if (url.pathname === '/' + firstSegment) {
-              res.writeHead(301, { 'Location': '/' + firstSegment + '/' + (url.search || '') });
+            if (method === 'OPTIONS') {
+              res.writeHead(204);
               return res.end();
             }
 
-            if (url.pathname === '/' + firstSegment + '/' || url.pathname === '/' + firstSegment + '/index.html') {
-              const indexFile = path.join(candidateProjDir, 'index.html');
-              if (fs.existsSync(indexFile)) {
-                res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-cache' });
-                return res.end(fs.readFileSync(indexFile));
+            // Allow localhost, 127.0.0.1, and all local private network IPs (192.168.*, 10.*, 172.16-31.*, .local)
+            if (origin) {
+              const isLocal = origin.startsWith('http://localhost') ||
+                              origin.startsWith('http://127.0.0.1') ||
+                              origin.includes('192.168.') ||
+                              origin.includes('10.') ||
+                              origin.includes('.local') ||
+                              /https?:\/\/172\.(1[6-9]|2[0-9]|3[0-1])\./.test(origin);
+              if (!isLocal) {
+                res.writeHead(403, { 'Content-Type': 'application/json' });
+                return res.end(JSON.stringify({ success: false, error: 'Forbidden: non-LAN cross-origin request rejected' }));
               }
             }
 
-            const relativeAsset = pathParts.slice(1).join('/');
-            if (relativeAsset) {
-              const directFile = path.join(candidateProjDir, relativeAsset);
-              if (fs.existsSync(directFile) && fs.statSync(directFile).isFile()) {
-                return LunoServer.serveAsset(req, res, path.relative(webRoot, directFile));
+            // Endpoint: Return network interfaces & system identity for cross-machine discovery
+            if (method === 'GET' && url.pathname === '/api/lan-info') {
+              const os = require('os');
+              const nets = os.networkInterfaces();
+              const ipList = [];
+              for (const name of Object.keys(nets)) {
+                for (const net of nets[name]) {
+                  if (net.family === 'IPv4' && !net.internal) {
+                    ipList.push({ interface: name, address: net.address });
+                  }
+                }
+              }
+              return LunoServer.sendJSON(res, 200, {
+                hostname: os.hostname(),
+                platform: os.platform(),
+                ips: ipList,
+                primaryIp: ipList[0]?.address || '127.0.0.1',
+                port: process.env.PORT || 8080,
+                rootDir: LunoServer.getRootDir(),
+                webRootDir: LunoServer.getWebRootDir()
+              });
+            }
+
+            // Endpoint: Automated Linux Machine Provisioning Script
+            if (method === 'GET' && (url.pathname === '/setup-linux.sh' || url.pathname === '/api/setup-linux')) {
+              res.writeHead(200, {
+                'Content-Type': 'text/x-shellscript; charset=utf-8',
+                'Cache-Control': 'no-cache'
+              });
+              return res.end(LunoServer.getLinuxSetupScript(req));
+            }
+
+            if (method === 'GET' && (url.pathname === '/' || url.pathname === '/index.html' || url.pathname === '/full' || url.pathname === '/ui/1' || url.pathname === '/ui/full')) {
+              return LunoServer.serveIndex(req, res);
+            }
+
+            if (method === 'GET' && (url.pathname === '/app-preview' || url.pathname === '/app-preview/index.html')) {
+              const targetProj = url.searchParams.get('project') || 'Luno';
+              res.writeHead(302, { 'Location': '/' + encodeURIComponent(targetProj) + '/' });
+              return res.end();
+            }
+
+            const pathParts = url.pathname.split('/').filter(Boolean);
+            const firstSegment = pathParts[0] || '';
+            const isSystemRoute = ['api', 'assets', 'app', 'core', 'browser', 'docs', 'test', 'library'].includes(firstSegment.toLowerCase());
+
+            if (!isSystemRoute && firstSegment) {
+              const candidateProjDir = path.join(webRoot, firstSegment);
+              if (fs.existsSync(candidateProjDir) && fs.statSync(candidateProjDir).isDirectory()) {
+                if (url.pathname === '/' + firstSegment) {
+                  res.writeHead(301, { 'Location': '/' + firstSegment + '/' + (url.search || '') });
+                  return res.end();
+                }
+
+                if (url.pathname === '/' + firstSegment + '/' || url.pathname === '/' + firstSegment + '/index.html') {
+                  const indexFile = path.join(candidateProjDir, 'index.html');
+                  if (fs.existsSync(indexFile)) {
+                    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-cache' });
+                    return res.end(fs.readFileSync(indexFile));
+                  }
+                }
+
+                const relativeAsset = pathParts.slice(1).join('/');
+                if (relativeAsset) {
+                  const directFile = path.join(candidateProjDir, relativeAsset);
+                  if (fs.existsSync(directFile) && fs.statSync(directFile).isFile()) {
+                    return LunoServer.serveAsset(req, res, path.relative(webRoot, directFile));
+                  }
+                }
               }
             }
+
+            if (method === 'GET' && url.pathname === '/api/ping') {
+              return LunoServer.sendJSON(res, 200, { status: "online", pid: process.pid, rootDir: LunoServer.getRootDir(), version: LunoServer.VERSION });
+            }
+
+            if (method === 'GET' && url.pathname === '/api/projects/list') {
+              return LunoServer.handleProjectsList(req, res);
+            }
+
+            if (method === 'POST' && url.pathname === '/api/projects/fork') {
+              return LunoServer.handleForkProject(req, res);
+            }
+
+            if (method === 'GET' && url.pathname === '/api/fs/ls') {
+              return LunoServer.handleFsLs(req, res, url);
+            }
+
+            if (method === 'GET' && url.pathname === '/api/fs/read') {
+              return LunoServer.handleFsRead(req, res, url);
+            }
+
+            if (method === 'GET' && (url.pathname === '/api/all-code' || url.pathname === '/api/all-code/')) {
+              return LunoServer.handleAllCode(req, res, url);
+            }
+
+            if (method === 'GET' && url.pathname === '/api/git/file-diff') {
+              return LunoServer.handleGitFileDiff(req, res, url);
+            }
+
+            if (method === 'GET' && url.pathname === '/api/git/log') {
+              return LunoServer.handleGitLog(req, res, url);
+            }
+
+            if (method === 'GET' && url.pathname === '/api/git/commit') {
+              return LunoServer.handleGitCommitDetails(req, res, url);
+            }
+
+            if (method === 'POST' && url.pathname === '/api/fs/set-root') {
+              return LunoServer.handleSetRoot(req, res);
+            }
+
+            if (method === 'POST' && url.pathname === '/api/context/request') {
+              return LunoServer.handleContextRequest(req, res, url);
+            }
+
+            if (method === 'POST' && url.pathname === '/api/deploy') {
+              return LunoServer.handleDeploy(req, res, url);
+            }
+
+            if (method === 'POST' && url.pathname === '/api/save') {
+              let b = '';
+              const projectParam = url.searchParams.get('project') || '';
+              req.on('data', c => { b += c; });
+              req.on('end', async () => {
+                try {
+                  const r = await LunoServer.parseAndSaveFiles(b, projectParam);
+                  LunoServer.sendJSON(res, 200, r);
+                } catch(e) {
+                  LunoServer.sendJSON(res, 400, { success: false, error: e.message });
+                }
+              });
+              return;
+            }
+
+            if (method === 'GET') {
+              return LunoServer.serveAsset(req, res, url.pathname.slice(1));
+            }
+
+            LunoServer.sendJSON(res, 404, { error: 'Route not found' });
+          } catch (err) {
+            LunoServer.sendJSON(res, 500, { error: err.message });
           }
         }
-
-        if (method === 'GET' && url.pathname === '/api/ping') {
-          return LunoServer.sendJSON(res, 200, { status: "online", pid: process.pid, rootDir: LunoServer.getRootDir(), version: LunoServer.VERSION });
-        }
-
-        if (method === 'GET' && url.pathname === '/api/projects/list') {
-          return LunoServer.handleProjectsList(req, res);
-        }
-
-        if (method === 'POST' && url.pathname === '/api/projects/fork') {
-          return LunoServer.handleForkProject(req, res);
-        }
-
-        if (method === 'GET' && url.pathname === '/api/fs/ls') {
-          return LunoServer.handleFsLs(req, res, url);
-        }
-
-        if (method === 'GET' && url.pathname === '/api/fs/read') {
-          return LunoServer.handleFsRead(req, res, url);
-        }
-
-        if (method === 'GET' && (url.pathname === '/api/all-code' || url.pathname === '/api/all-code/')) {
-          return LunoServer.handleAllCode(req, res, url);
-        }
-
-        if (method === 'GET' && url.pathname === '/api/git/file-diff') {
-          return LunoServer.handleGitFileDiff(req, res, url);
-        }
-
-        if (method === 'GET' && url.pathname === '/api/git/log') {
-          return LunoServer.handleGitLog(req, res, url);
-        }
-
-        if (method === 'GET' && url.pathname === '/api/git/commit') {
-          return LunoServer.handleGitCommitDetails(req, res, url);
-        }
-
-        if (method === 'POST' && url.pathname === '/api/fs/set-root') {
-          return LunoServer.handleSetRoot(req, res);
-        }
-
-        if (method === 'POST' && url.pathname === '/api/context/request') {
-          return LunoServer.handleContextRequest(req, res, url);
-        }
-
-        if (method === 'POST' && url.pathname === '/api/deploy') {
-          return LunoServer.handleDeploy(req, res, url);
-        }
-
-        if (method === 'POST' && url.pathname === '/api/save') {
-          let b = '';
-          const projectParam = url.searchParams.get('project') || '';
-          req.on('data', c => { b += c; });
-          req.on('end', async () => {
-            try {
-              const r = await LunoServer.parseAndSaveFiles(b, projectParam);
-              LunoServer.sendJSON(res, 200, r);
-            } catch(e) {
-              LunoServer.sendJSON(res, 400, { success: false, error: e.message });
-            }
-          });
-          return;
-        }
-
-        if (method === 'GET') {
-          return LunoServer.serveAsset(req, res, url.pathname.slice(1));
-        }
-
-        LunoServer.sendJSON(res, 404, { error: 'Route not found' });
-      } catch (err) {
-        LunoServer.sendJSON(res, 500, { error: err.message });
-      }
-    }
 static serveIndex(req, res) {
     if (res.headersSent) return;
     const indexFile = path.join(LunoServer.getRootDir(), 'index.html');
@@ -1500,6 +1541,99 @@ static serveIndex(req, res) {
       } catch (err) {
         return LunoServer.sendJSON(res, 500, { success: false, error: err.message });
       }
+    }
+
+  static getLinuxSetupScript(req) {
+      const hostHeader = (req && req.headers && req.headers.host) || '127.0.0.1:8080';
+      const macHost = hostHeader.split(':')[0];
+
+      // Catalog of primary repos to clone
+      const repos = [
+        'Luno', 'Library', 'RunOnServerTools', 'accuCad', 'Basic3D',
+        'BasicsWithDialogBox', 'TriBlob', 'teacup', 'LegoDetective',
+        'AlphabetGame', 'MathStorm', 'guessTheNoteGame', 'Calculator',
+        'situation', 'EconomicsOfAutomation', 'AardvarkPlaylist', 'SvgStudio',
+        'Es6Converter', 'LunoParser'
+      ];
+
+      return `#!/usr/bin/env bash
+  # ==============================================================================
+  # 🌙 LUNO WORKSPACE - AUTOMATED UBUNTU PROVISIONING SCRIPT
+  # Fetched directly from Mac Luno Workspace (${macHost})
+  # ==============================================================================
+  set -e
+
+  C_CYAN='\\033[0;36m'
+  C_GREEN='\\033[0;32m'
+  C_YELLOW='\\033[1;33m'
+  C_RED='\\033[0;31m'
+  C_RESET='\\033[0m'
+
+  echo -e "\${C_CYAN}================================================================\${C_RESET}"
+  echo -e "\${C_CYAN}🌙 Provisioning Ubuntu Machine for Luno Development\${C_RESET}"
+  echo -e "\${C_CYAN}================================================================\${C_RESET}"
+
+  # 1. Update APT & install base developer packages and OpenSSH server
+  echo -e "\\n\${C_YELLOW}[1/5] Updating packages & installing git, curl, build tools & OpenSSH server...\${C_RESET}"
+  sudo apt update
+  sudo apt install -y curl git build-essential openssh-server net-tools ufw
+
+  # 2. Start and enable OpenSSH service
+  echo -e "\\n\${C_YELLOW}[2/5] Starting SSH Server...\${C_RESET}"
+  sudo systemctl enable --now ssh
+  sudo ufw allow 22/tcp || true
+  sudo ufw allow 8080/tcp || true
+
+  # 3. Install Node.js 22 LTS (via official NodeSource)
+  if ! command -v node &> /dev/null || [[ "$(node -v)" != v2* ]]; then
+    echo -e "\\n\${C_YELLOW}[3/5] Installing Node.js 22 LTS via NodeSource...\${C_RESET}"
+    curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
+    sudo apt install -y nodejs
+  else
+    echo -e "\\n\${C_GREEN}✓ Node.js already installed: $(node -v)\${C_RESET}"
+  fi
+
+  # 4. Create Workspace directory and clone repositories
+  TARGET_DIR="\$HOME/source/LunoProjects"
+  echo -e "\\n\${C_YELLOW}[4/5] Setting up workspace in \$TARGET_DIR...\${C_RESET}"
+  mkdir -p "\$TARGET_DIR"
+  cd "\$TARGET_DIR"
+
+  REPOS=(${repos.map(r => `"${r}"`).join(' ')})
+
+  for repo in "\${REPOS[@]}"; do
+    if [ -d "\$repo/.git" ]; then
+      echo -e "  🔄 Updating \$repo..."
+      (cd "\$repo" && git pull || true)
+    else
+      echo -e "  ⬇️  Cloning \$repo from GitHub..."
+      git clone "https://github.com/karmatics/\$repo.git" || echo "  ⚠️ Notice: \$repo not found on remote (will be created on first deploy)"
+    fi
+  done
+
+  # Ensure package dependencies are ready for Luno
+  if [ -d "Luno" ]; then
+    cd Luno
+    npm install --no-audit --no-fund 2>/dev/null || true
+    cd ..
+  fi
+
+  # 5. Extract IP address and display ready banner
+  UBUNTU_IP=$(hostname -I 2>/dev/null | awk '{print $1}')
+  echo -e "\\n\${C_GREEN}================================================================\${C_RESET}"
+  echo -e "\${C_GREEN}✅ UBUNTU PROVISIONING COMPLETE!\${C_RESET}"
+  echo -e "\${C_GREEN}================================================================\${C_RESET}"
+  echo -e "• Machine Local IP: \${C_CYAN}\$UBUNTU_IP\${C_RESET}"
+  echo -e "• SSH Connection:   \${C_CYAN}ssh \$USER@\$UBUNTU_IP\${C_RESET}"
+  echo -e "• Projects Folder:  \${C_CYAN}\$TARGET_DIR\${C_RESET}"
+  echo ""
+  echo -e "\${C_YELLOW}🚀 To launch Luno on this Linux machine:\${C_RESET}"
+  echo -e "  cd ~/source/LunoProjects/Luno && node server.js"
+  echo ""
+  echo -e "You can now connect to this Linux machine from your Mac over SSH or open"
+  echo -e "http://\$UBUNTU_IP:8080 in your browser!"
+  echo -e "\${C_GREEN}================================================================\${C_RESET}\\n"
+  `;
     }
 }
 

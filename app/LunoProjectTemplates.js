@@ -102,14 +102,23 @@ class LunoProjectTemplates {
             m('span', { style: { fontSize: '0.72rem', color: '#00f2fe', background: '#003847', border: '1px solid #00f2fe', padding: '0.2rem 0.6rem', borderRadius: '12px', fontWeight: 'bold' } }, 'GitHub: ' + currentAccount),
             m('span', { style: { fontSize: '0.72rem', color: '#3fb950', background: '#0d2818', border: '1px solid #238636', padding: '0.2rem 0.6rem', borderRadius: '12px', fontWeight: 'bold' } }, 'Target: ' + currentTarget),
             m('button', {
-              style: { padding: '0.25rem 0.6rem', background: '#271052', color: '#d2a8ff', border: '1px solid #8257e5', borderRadius: '12px', fontSize: '0.72rem', fontWeight: 'bold', cursor: 'pointer', fontFamily: 'monospace' },
+              style: { padding: '0.25rem 0.6rem', background: '#271052', color: '#f7df1e', border: '1px solid #8257e5', borderRadius: '12px', fontSize: '0.72rem', fontWeight: 'bold', cursor: 'pointer', fontFamily: 'monospace' },
               title: 'Download complete backup of all projects in a single ZIP file',
               onclick: function() {
-                if (typeof LunoZipExporter !== 'undefined' && LunoZipExporter.downloadAllProjectsAsZip) {
+                if (typeof LunoZipExporter !== 'undefined') {
                   LunoZipExporter.downloadAllProjectsAsZip();
                 }
               }
-            }, '📦 Backup All (.ZIP)')
+            }, '📦 Backup All (.ZIP)'),
+            m('button', {
+              style: { padding: '0.25rem 0.6rem', background: '#161b22', color: '#58a6ff', border: '1px solid #30363d', borderRadius: '12px', fontSize: '0.72rem', fontWeight: 'bold', cursor: 'pointer', fontFamily: 'monospace' },
+              title: 'Download shell script to clone/pull all repositories on another computer',
+              onclick: function() {
+                if (typeof LunoZipExporter !== 'undefined') {
+                  LunoZipExporter.downloadCloneScript();
+                }
+              }
+            }, '📜 Clone Script')
           )
         ),
         m('p', { style: { fontSize: '0.78rem', color: '#8b949e', margin: 0, lineHeight: '1.4' } },
@@ -226,7 +235,7 @@ class LunoProjectTemplates {
       container.appendChild(librarySection);
       container.appendChild(userProjectsHeader);
       container.appendChild(listContainer);
-  }
+    }
   static buildProjectCard(p, container) {
       const el = (typeof LunoUIComponents !== 'undefined' && LunoUIComponents.makeElement)
         ? LunoUIComponents.makeElement
