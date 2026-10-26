@@ -1093,6 +1093,7 @@ class LunoServer {
           return LunoServer.handleGitCommitDetails(req, res, url);
         }
 
+        // Fleet-wide multi-repo Git operations
         if (method === 'POST' && (url.pathname === '/api/git/fleet-sync' || url.pathname === '/api/deploy/all')) {
           return LunoServer.handleFleetSync(req, res, url);
         }
@@ -1671,7 +1672,7 @@ static serveIndex(req, res) {
               const envOpts = {
                 cwd: projDir,
                 encoding: 'utf8',
-                timeout: 30000,
+                timeout: 15000,
                 env: Object.assign({}, process.env, {
                   GIT_SSH_COMMAND: 'ssh -o StrictHostKeyChecking=accept-new'
                 })

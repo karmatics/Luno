@@ -77,7 +77,6 @@ for r in "${REPOS[@]}"; do
     fi
 
   elif [ "$ACTION" == "push" ]; then
-    echo -ne "• Pushing ${C_CYAN}$r${C_RESET}... "
     STATUS=$(git status --short 2>/dev/null || true)
     
     if [ ! -f .nojekyll ]; then
@@ -86,15 +85,18 @@ for r in "${REPOS[@]}"; do
     fi
 
     if [ -n "$STATUS" ]; then
+      echo -ne "• Pushing ${C_CYAN}$r${C_RESET}... "
       git add -A 2>/dev/null || true
       git commit -m "$COMMIT_MSG" 2>/dev/null || true
-    fi
-
-    if OUT=$(git push origin "$BRANCH" 2>&1); then
-      echo -e "${C_GREEN}✓ Pushed${C_RESET}"
-      COUNT_SUCCESS=$((COUNT_SUCCESS + 1))
+      if OUT=$(git push origin "$BRANCH" 2>&1); then
+        echo -e "${C_GREEN}✓ Pushed${C_RESET}"
+        COUNT_SUCCESS=$((COUNT_SUCCESS + 1))
+      else
+        echo -e "${C_RED}❌ Push error${C_RESET}: $OUT"
+      fi
     else
-      echo -e "${C_RED}❌ Push error${C_RESET}: $OUT"
+      echo -e "• $r: Clean (nothing to push)"
+      COUNT_SUCCESS=$((COUNT_SUCCESS + 1))
     fi
   fi
 done

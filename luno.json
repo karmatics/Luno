@@ -94,7 +94,7 @@
       "app/InboxActionTimer.js"
     ]
   },
-  "processedCountSinceCheckpoint": 6,
+  "processedCountSinceCheckpoint": 11,
   "changedMethods": {
     "Comments/js/Comments.js": "2026-10-21T21:59:29.105Z",
     "Comments/js/CommentsInteractiveComponent.js": "2026-10-21T21:59:29.105Z",
@@ -116,11 +116,14 @@
     "Voting/src/InstantRunoffWidget.js": "2026-10-24T20:50:09.694Z",
     "Voting/src/SankeyDiagram.js": "2026-10-24T20:50:09.694Z",
     "Voting/src/ThemeManager.js": "2026-10-24T20:50:09.694Z",
-    "HomeSetup/js/HomeHandoffComponent.js": "2026-10-25T19:13:11.473Z",
+    "HomeSetup/js/HomeHandoffComponent.js": "2026-10-26T06:41:41.315Z",
     "HomeSetup/js/HomeNetworkContent.js": "2026-10-25T04:44:01.745Z",
     "HomeSetup/content/network.html": "2026-10-25T04:44:01.745Z",
-    "HomeSetup/content/handoff.html": "2026-10-25T19:13:11.473Z",
-    "HomeSetup/luno.json": "2026-10-25T19:13:11.473Z"
+    "HomeSetup/content/handoff.html": "2026-10-26T06:41:41.315Z",
+    "HomeSetup/luno.json": "2026-10-25T19:13:11.473Z",
+    "core/LunoServer.js": "2026-10-26T06:41:41.315Z",
+    "app/LunoDeployEngine.js": "2026-10-26T06:41:41.315Z",
+    "fleet-git.sh": "2026-10-26T06:41:41.315Z"
   },
   "lastCheckpointTime": "2026-10-25T05:29:57.891Z",
   "pendingCheckpointDescription": "Clean working tree"
