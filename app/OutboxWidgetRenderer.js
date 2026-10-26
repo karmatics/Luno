@@ -9,7 +9,8 @@ class OutboxWidgetRenderer {
     var rawPayload = String(item.payload || '');
 
     var itemWrapper = document.createElement('div');
-    itemWrapper.style.cssText = 'display:flex; flex-direction:column; border-radius:6px; background:' + (isHigh ? '#2a0826' : '#0d1117') + '; border:1px solid ' + (isExpanded ? '#00f2fe' : (isHigh ? '#ff007f' : '#21262d')) + '; overflow:hidden;';
+    itemWrapper.className = 'outbox-item-row';
+    itemWrapper.style.cssText = 'display:flex; flex-direction:column; border-radius:6px; background:' + (isHigh ? '#2a0826' : '#0d1117') + '; border:1px solid ' + (isExpanded ? '#00f2fe' : (isHigh ? '#ff007f' : '#21262d')) + '; overflow:hidden; transition:border-color 0.15s ease;';
 
     var row = document.createElement('div');
     row.style.cssText = 'display:flex; justify-content:space-between; align-items:center; padding:0.45rem 0.65rem; font-size:0.75rem; font-family:monospace; cursor:pointer;';
@@ -23,11 +24,12 @@ class OutboxWidgetRenderer {
     };
 
     var containerMatches = (rawPayload.match(/<(script|style|template|svg)\b/gi) || []).length;
+    var fileCountLabel = (item.files && item.files.length) ? item.files.length : (containerMatches || 1);
 
     var info = document.createElement('div');
     info.style.cssText = 'flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; margin-right:0.5rem;';
     info.innerHTML = '<div style="font-weight:bold; color:' + (isHigh ? '#ff66cc' : '#a371f7') + ';">' + (isExpanded ? '▼ ' : '▶ ') + (item.title || 'Outbox Item') + ' <span style="color:#8b949e; font-weight:normal; font-size:0.7rem;">(' + (item.timestamp || '') + ')</span></div>' +
-      '<div style="color:#7ee787; font-size:0.7rem;">Summary: ' + (containerMatches || 1) + ' section(s) / ~' + (item.lines || 1) + ' lines (~' + (item.estTokens || 500) + ' tokens)</div>';
+      '<div style="color:#7ee787; font-size:0.7rem;">' + fileCountLabel + ' item(s) • ~' + (item.lines || 1) + ' lines (~' + (item.estTokens || 500) + ' tokens)</div>';
 
     var actions = document.createElement('div');
     actions.style.cssText = 'display:flex; gap:0.3rem; align-items:center;';
@@ -57,7 +59,7 @@ class OutboxWidgetRenderer {
     var btnDel = document.createElement('button');
     btnDel.style.cssText = 'background:none; border:none; cursor:pointer; font-size:0.85rem; color:#f85149; padding:0 0.2rem;';
     btnDel.textContent = '✖';
-    btnDel.title = 'Remove item';
+    btnDel.title = 'Remove entire package item';
     btnDel.onclick = function(e) {
       e.stopPropagation();
       if (targetQueue && targetQueue.removeItem) targetQueue.removeItem(item.id);
@@ -68,16 +70,106 @@ class OutboxWidgetRenderer {
     actions.appendChild(btnDel);
     row.appendChild(info);
     row.appendChild(actions);
-
     itemWrapper.appendChild(row);
 
     if (isExpanded) {
       var detailsPanel = document.createElement('div');
-      detailsPanel.style.cssText = 'padding:0.6rem; background:#070a13; border-top:1px solid #30363d; display:flex; flex-direction:column; gap:0.4rem;';
+      detailsPanel.style.cssText = 'padding:0.6rem; background:#070a13; border-top:1px solid #30363d; display:flex; flex-direction:column; gap:0.45rem;';
+
+      // 1. Resolve constituent files
+      var filesList = item.files;
+      if (!filesList || filesList.length === 0) {
+        if (typeof LunoPayloadParser !== 'undefined' && LunoPayloadParser.parse) {
+          var parsed = LunoPayloadParser.parse(rawPayload);
+          filesList = (parsed.files || []).map(function(f) {
+            return {
+              filePath: f.filePath,
+              size: f.content ? f.content.length : 0,
+              lines: f.content ? f.content.split('\n').length : 0,
+              tagName: f.tagName || 'script'
+            };
+          });
+        }
+      }
+
+      var formatBytes = function(bytes) {
+        if (!bytes) return '0 B';
+        if (bytes < 1024) return bytes + ' B';
+        return (bytes / 1024).toFixed(1) + ' KB';
+      };
+
+      if (filesList && filesList.length > 0) {
+        var filesSection = document.createElement('div');
+        filesSection.style.cssText = 'display:flex; flex-direction:column; gap:0.25rem; margin-bottom:0.25rem;';
+
+        var filesHeader = document.createElement('div');
+        filesHeader.style.cssText = 'display:flex; justify-content:space-between; align-items:center; font-size:0.7rem; color:#8b949e; font-weight:bold; border-bottom:1px solid #21262d; padding-bottom:0.2rem; margin-bottom:0.2rem;';
+        filesHeader.innerHTML = '<span>CONSTITUENT ITEMS (' + filesList.length + '):</span><span>SIZE / REMOVE</span>';
+        filesSection.appendChild(filesHeader);
+
+        var filesContainer = document.createElement('div');
+        filesContainer.style.cssText = 'display:flex; flex-direction:column; gap:0.25rem; max-height:220px; overflow-y:auto; padding-right:2px;';
+
+        filesList.forEach(function(f) {
+          var fRow = document.createElement('div');
+          fRow.style.cssText = 'display:flex; justify-content:space-between; align-items:center; background:#11151c; border:1px solid #1e293b; border-radius:4px; padding:0.25rem 0.5rem; font-size:0.72rem; gap:0.4rem;';
+
+          var fLeft = document.createElement('div');
+          fLeft.style.cssText = 'display:flex; align-items:center; gap:0.35rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex:1;';
+
+          var ext = (f.filePath.split('.').pop() || '').toLowerCase();
+          var badgeColor = '#58a6ff';
+          if (ext === 'js' || ext === 'mjs') badgeColor = '#f7df1e';
+          else if (ext === 'html') badgeColor = '#ff7b72';
+          else if (ext === 'css') badgeColor = '#00f2fe';
+          else if (ext === 'json') badgeColor = '#3fb950';
+
+          var extBadge = document.createElement('span');
+          extBadge.style.cssText = 'font-size:0.6rem; color:' + badgeColor + '; background:rgba(255,255,255,0.06); padding:0.05rem 0.3rem; border-radius:3px; font-weight:bold; flex-shrink:0;';
+          extBadge.textContent = ext.toUpperCase();
+
+          var nameSpan = document.createElement('span');
+          nameSpan.style.cssText = 'color:#f0f6fc; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;';
+          nameSpan.textContent = f.filePath;
+          nameSpan.title = f.filePath;
+
+          fLeft.appendChild(extBadge);
+          fLeft.appendChild(nameSpan);
+
+          var fRight = document.createElement('div');
+          fRight.style.cssText = 'display:flex; align-items:center; gap:0.4rem; flex-shrink:0;';
+
+          var sizeSpan = document.createElement('span');
+          sizeSpan.style.cssText = 'color:#8b949e; font-size:0.68rem;';
+          sizeSpan.textContent = (f.lines || 1) + ' L (' + formatBytes(f.size) + ')';
+
+          var btnRemoveFile = document.createElement('button');
+          btnRemoveFile.style.cssText = 'background:none; border:none; color:#ff7b72; cursor:pointer; font-size:0.8rem; font-weight:bold; padding:0 0.2rem; line-height:1;';
+          btnRemoveFile.textContent = '✖';
+          btnRemoveFile.title = 'Remove ' + f.filePath + ' from this bundle';
+          btnRemoveFile.onclick = function(e) {
+            e.stopPropagation();
+            if (targetQueue && targetQueue.removeFileFromItem) {
+              targetQueue.removeFileFromItem(item.id, f.filePath);
+            }
+          };
+
+          fRight.appendChild(sizeSpan);
+          fRight.appendChild(btnRemoveFile);
+
+          fRow.appendChild(fLeft);
+          fRow.appendChild(fRight);
+          filesContainer.appendChild(fRow);
+        });
+
+        filesSection.appendChild(filesContainer);
+        detailsPanel.appendChild(filesSection);
+      }
 
       var previewText = document.createElement('pre');
-      previewText.style.cssText = 'background:#0d1117; border:1px solid #21262d; border-radius:4px; padding:0.5rem; color:#7ee787; font-size:0.72rem; font-family:monospace; max-height:160px; overflow-y:auto; white-space:pre-wrap; word-break:break-all; margin:0;';
+      previewText.style.cssText = 'background:#0d1117; border:1px solid #21262d; border-radius:4px; padding:0.5rem; color:#7ee787; font-size:0.72rem; font-family:monospace; max-height:120px; overflow-y:auto; white-space:pre-wrap; word-break:break-all; margin:0;';
       previewText.textContent = rawPayload.trim();
+      detailsPanel.appendChild(previewText);
 
       var btnRow = document.createElement('div');
       btnRow.style.cssText = 'display:flex; justify-content:flex-end; gap:0.35rem;';
@@ -106,14 +198,12 @@ class OutboxWidgetRenderer {
 
       btnRow.appendChild(btnEditSingle);
       btnRow.appendChild(btnCopySingle);
-      detailsPanel.appendChild(previewText);
       detailsPanel.appendChild(btnRow);
       itemWrapper.appendChild(detailsPanel);
     }
 
     return itemWrapper;
   }
-
   static renderWidget(containerId, retryCount) {
       var retries = retryCount || 0;
       var targetId = containerId || 'outbox-queue-container';

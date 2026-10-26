@@ -664,61 +664,284 @@ class LunoDeployEngine {
       return { success: false, error: e.message };
     }
   }
+
   static async mountUI(container) {
       if (!container) return;
       container.innerHTML = '';
 
-      var m = (typeof LunoUIComponents !== 'undefined' && LunoUIComponents.makeElement)
+      const m = (typeof LunoUIComponents !== 'undefined' && LunoUIComponents.makeElement)
         ? LunoUIComponents.makeElement
         : function(tag, attrs) {
-            var el = document.createElement(tag || 'div');
+            const el = document.createElement(tag || 'div');
             if (attrs && typeof attrs === 'object') Object.assign(el, attrs);
-            for (var i = 2; i < arguments.length; i++) {
-              var c = arguments[i];
+            for (let i = 2; i < arguments.length; i++) {
+              const c = arguments[i];
               if (c) el.appendChild(typeof c === 'string' ? document.createTextNode(c) : c);
             }
             return el;
           };
 
-      var currentTarget = (typeof ClientApp !== 'undefined' && ClientApp.getTargetProject) ? ClientApp.getTargetProject() : 'Luno';
-      var savedToken = LunoDeployEngine.getGithubToken();
-      var currentAccount = LunoDeployEngine.getGithubAccount();
+      const currentTarget = (typeof ClientApp !== 'undefined' && ClientApp.getTargetProject) ? ClientApp.getTargetProject() : 'Luno';
+      const savedToken = LunoDeployEngine.getGithubToken();
+      const currentAccount = LunoDeployEngine.getGithubAccount();
 
-      var accountInput = m('input', {
+      const accountInput = m('input', {
         type: 'text',
         value: currentAccount,
         placeholder: 'karmatics',
         style: { width: '130px', background: '#0d1117', color: '#00f2fe', border: '1px solid #00f2fe', padding: '0.4rem 0.55rem', borderRadius: '6px', fontSize: '0.75rem', fontFamily: 'monospace', fontWeight: 'bold', outline: 'none' },
-        oninput: function(e) {
-          LunoDeployEngine.setGithubAccount(e.target.value);
-        }
+        oninput: (e) => LunoDeployEngine.setGithubAccount(e.target.value)
       });
 
-      var tokenInput = m('input', {
+      const tokenInput = m('input', {
         type: 'password',
         value: savedToken,
         placeholder: 'ghp_xxxxxxxxxxxxxxxxxxxx (PAT token for auto-creating repos on GitHub)',
         style: { flex: 1, minWidth: '200px', background: '#0d1117', color: '#7ee787', border: '1px solid #30363d', padding: '0.45rem', borderRadius: '6px', fontSize: '0.75rem', fontFamily: 'monospace', outline: 'none' },
-        oninput: function(e) {
-          LunoDeployEngine.setGithubToken(e.target.value);
+        oninput: (e) => LunoDeployEngine.setGithubToken(e.target.value)
+      });
+
+      const syncOutputBox = m('pre', {
+        id: 'fleet-sync-output-pre',
+        style: {
+          display: 'none',
+          background: '#070a13',
+          border: '1px solid #1e293b',
+          borderRadius: '6px',
+          padding: '0.75rem',
+          color: '#7ee787',
+          fontSize: '0.74rem',
+          fontFamily: 'monospace',
+          whiteSpace: 'pre-wrap',
+          maxHeight: '260px',
+          overflowY: 'auto',
+          margin: '0.4rem 0 0 0'
         }
       });
 
-      var tokenCard = m('div', {
+      const fleetSyncCard = m('div', {
+        style: {
+          background: 'linear-gradient(135deg, #161b22 0%, #0d1117 100%)',
+          border: '2px solid #00f2fe',
+          borderRadius: '10px',
+          padding: '1rem',
+          marginBottom: '0.75rem',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '0.6rem',
+          boxShadow: '0 4px 18px rgba(0, 242, 254, 0.25)',
+          fontFamily: 'monospace'
+        }
+      }, [
+        m('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.4rem' } }, [
+          m('div', { style: { display: 'flex', alignItems: 'center', gap: '0.5rem' } }, [
+            m('span', { style: { fontSize: '1.2rem' } }, '🔄'),
+            m('strong', { style: { color: '#00f2fe', fontSize: '1rem' } }, 'FLEET-WIDE GIT REPOSITORY SYNCHRONIZER'),
+            m('span', { id: 'fleet-sync-status-badge', style: { fontSize: '0.7rem', color: '#3fb950', background: 'rgba(63, 185, 80, 0.15)', border: '1px solid #238636', padding: '2px 8px', borderRadius: '10px', fontWeight: 'bold' } }, 'Ready')
+          ]),
+          m('span', { style: { fontSize: '0.72rem', color: '#8b949e' } }, 'Synchronizes all 44 projects across Mac & Linux via Git')
+        ]),
+        m('div', { style: { fontSize: '0.78rem', color: '#cbd5e1', lineHeight: '1.45' } },
+          'Check in and push all repositories with uncommitted edits in one click, or pull upstream updates across every project directory.'
+        ),
+        m('div', { style: { display: 'flex', gap: '0.5rem', flexWrap: 'wrap' } }, [
+          m('button', {
+            id: 'btn-fleet-push-all',
+            style: {
+              flex: '1 1 180px',
+              padding: '0.65rem 0.85rem',
+              background: '#238636',
+              color: '#fff',
+              border: 'none',
+              borderRadius: '6px',
+              fontWeight: 'bold',
+              fontSize: '0.8rem',
+              cursor: 'pointer',
+              fontFamily: 'monospace',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '0.35rem',
+              boxShadow: '0 4px 12px rgba(35, 134, 54, 0.35)'
+            },
+            onclick: async () => {
+              const btn = document.getElementById('btn-fleet-push-all');
+              const badge = document.getElementById('fleet-sync-status-badge');
+              btn.disabled = true;
+              btn.textContent = '⏳ Staging & Pushing All...';
+              syncOutputBox.style.display = 'block';
+              syncOutputBox.style.color = '#00f2fe';
+              syncOutputBox.textContent = '⚡ Starting fleet-wide push across all projects...';
+              if (badge) { badge.textContent = 'Pushing...'; badge.style.color = '#00f2fe'; }
+
+              const res = await LunoDeployEngine.fleetSync('push', { commitMsg: `[Fleet Checkpoint] ${new Date().toLocaleString()}` });
+              btn.disabled = false;
+              btn.textContent = '⬆️ Commit & Push All Repos';
+
+              if (res && res.success) {
+                const summary = (res.results || []).map(r => `• ${r.name}: ${r.success ? '✅ ' + (r.changesCommitted ? 'Committed & Pushed' : (r.output || 'Up to date')) : '❌ ' + (r.error || r.output)}`).join('\n');
+                syncOutputBox.style.color = '#7ee787';
+                syncOutputBox.textContent = `✅ FLEET PUSH COMPLETE (${res.totalRepos} repositories processed):\n\n${summary}`;
+                if (badge) { badge.textContent = 'Push Complete'; badge.style.color = '#3fb950'; }
+                if (typeof ClientApp !== 'undefined' && ClientApp.showToast) {
+                  ClientApp.showToast(`Pushed all repos to GitHub! (${res.totalRepos} projects)`, 'success', '⬆️');
+                }
+              } else {
+                syncOutputBox.style.color = '#ff7b72';
+                syncOutputBox.textContent = '❌ Fleet Push Error:\n' + ((res && res.error) || 'Failed to sync');
+                if (badge) { badge.textContent = 'Push Failed'; badge.style.color = '#ff7b72'; }
+              }
+            }
+          }, '⬆️ Commit & Push All Repos'),
+
+          m('button', {
+            id: 'btn-fleet-pull-all',
+            style: {
+              flex: '1 1 180px',
+              padding: '0.65rem 0.85rem',
+              background: '#003847',
+              color: '#00f2fe',
+              border: '1px solid #00f2fe',
+              borderRadius: '6px',
+              fontWeight: 'bold',
+              fontSize: '0.8rem',
+              cursor: 'pointer',
+              fontFamily: 'monospace',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '0.35rem'
+            },
+            onclick: async () => {
+              const btn = document.getElementById('btn-fleet-pull-all');
+              const badge = document.getElementById('fleet-sync-status-badge');
+              btn.disabled = true;
+              btn.textContent = '⏳ Pulling All...';
+              syncOutputBox.style.display = 'block';
+              syncOutputBox.style.color = '#00f2fe';
+              syncOutputBox.textContent = '⚡ Pulling latest updates from origin main across all projects...';
+              if (badge) { badge.textContent = 'Pulling...'; badge.style.color = '#00f2fe'; }
+
+              const res = await LunoDeployEngine.fleetSync('pull');
+              btn.disabled = false;
+              btn.textContent = '⬇️ Pull All Repos';
+
+              if (res && res.success) {
+                const summary = (res.results || []).map(r => `• ${r.name}: ${r.success ? '✅ ' + (r.output || 'Updated') : '❌ ' + (r.error || r.output)}`).join('\n');
+                syncOutputBox.style.color = '#7ee787';
+                syncOutputBox.textContent = `✅ FLEET PULL COMPLETE (${res.totalRepos} repositories processed):\n\n${summary}`;
+                if (badge) { badge.textContent = 'In Sync'; badge.style.color = '#3fb950'; }
+                if (typeof ClientApp !== 'undefined' && ClientApp.showToast) {
+                  ClientApp.showToast(`Pulled latest updates for ${res.totalRepos} repositories!`, 'success', '⬇️');
+                }
+              } else {
+                syncOutputBox.style.color = '#ff7b72';
+                syncOutputBox.textContent = '❌ Fleet Pull Error:\n' + ((res && res.error) || 'Failed to pull');
+                if (badge) { badge.textContent = 'Pull Failed'; badge.style.color = '#ff7b72'; }
+              }
+            }
+          }, '⬇️ Pull All Repos'),
+
+          m('button', {
+            id: 'btn-fleet-remote-linux',
+            style: {
+              flex: '1 1 200px',
+              padding: '0.65rem 0.85rem',
+              background: '#271052',
+              color: '#d2a8ff',
+              border: '1px solid #8257e5',
+              borderRadius: '6px',
+              fontWeight: 'bold',
+              fontSize: '0.8rem',
+              cursor: 'pointer',
+              fontFamily: 'monospace',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '0.35rem'
+            },
+            onclick: async () => {
+              const btn = document.getElementById('btn-fleet-remote-linux');
+              const badge = document.getElementById('fleet-sync-status-badge');
+              btn.disabled = true;
+              btn.textContent = '⏳ Syncing Local ➔ Linux...';
+              syncOutputBox.style.display = 'block';
+              syncOutputBox.style.color = '#d2a8ff';
+              syncOutputBox.textContent = '⚡ 1/2: Committing and pushing local changes to GitHub...';
+
+              const pushRes = await LunoDeployEngine.fleetSync('push', { commitMsg: `[Cross-Wire Sync] ${new Date().toLocaleString()}` });
+              if (!pushRes || !pushRes.success) {
+                btn.disabled = false;
+                btn.textContent = '🌐 Push Local ➔ Pull on Linux';
+                syncOutputBox.style.color = '#ff7b72';
+                syncOutputBox.textContent = '❌ Push failed; aborted remote Linux pull:\n' + (pushRes?.error || 'Unknown error');
+                return;
+              }
+
+              syncOutputBox.textContent += '\n✅ Local push complete. 2/2: Triggering remote pull on Linux node (10.0.0.245:8080)...';
+
+              const pullRes = await LunoDeployEngine.fleetSync('pull', { host: '10.0.0.245' });
+              btn.disabled = false;
+              btn.textContent = '🌐 Push Local ➔ Pull on Linux';
+
+              if (pullRes && pullRes.success) {
+                const summary = (pullRes.results || []).map(r => `• ${r.name}: ${r.success ? '✅ ' + (r.output || 'Updated') : '❌ ' + (r.error || r.output)}`).join('\n');
+                syncOutputBox.style.color = '#7ee787';
+                syncOutputBox.textContent = `🎉 CROSS-WIRE FLEET SYNC COMPLETE!\nPushed to GitHub & pulled onto Linux node (10.0.0.245):\n\n${summary}`;
+                if (badge) { badge.textContent = 'Mac ↔ Linux Synced'; badge.style.color = '#3fb950'; }
+                if (typeof ClientApp !== 'undefined' && ClientApp.showToast) {
+                  ClientApp.showToast('Cross-node sync complete: Linux node is fully up to date!', 'success', '🎉');
+                }
+              } else {
+                syncOutputBox.style.color = '#ff7b72';
+                syncOutputBox.textContent = '⚠️ Local push succeeded, but Linux node pull failed:\n' + (pullRes?.error || 'Could not reach Linux node on 10.0.0.245:8080');
+              }
+            }
+          }, '🌐 Push Local ➔ Pull on Linux'),
+
+          m('button', {
+            style: {
+              padding: '0.65rem 0.85rem',
+              background: '#161b22',
+              color: '#cbd5e1',
+              border: '1px solid #30363d',
+              borderRadius: '6px',
+              fontSize: '0.8rem',
+              cursor: 'pointer',
+              fontFamily: 'monospace'
+            },
+            onclick: async () => {
+              syncOutputBox.style.display = 'block';
+              syncOutputBox.style.color = '#00f2fe';
+              syncOutputBox.textContent = '⚡ Checking status across all repositories...';
+              const res = await LunoDeployEngine.fleetSync('status');
+              if (res && res.success) {
+                const dirty = (res.results || []).filter(r => r.hasUncommitted);
+                const summary = (res.results || []).map(r => `• ${r.name} [${r.branch}]: ${r.hasUncommitted ? '⚠️ ' + r.uncommittedLines + ' modified file(s)' : '✓ Clean'}`).join('\n');
+                syncOutputBox.style.color = dirty.length > 0 ? '#ffb74d' : '#7ee787';
+                syncOutputBox.textContent = `📊 FLEET STATUS (${res.totalRepos} repositories, ${dirty.length} modified):\n\n${summary}`;
+              }
+            }
+          }, '🔍 Fleet Status')
+        ]),
+        syncOutputBox
+      ]);
+
+      const tokenCard = m('div', {
         style: { background: '#161b22', border: '1px solid #30363d', borderRadius: '8px', padding: '0.75rem', marginBottom: '0.75rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }
-      },
-        m('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.3rem' } },
-          m('div', { style: { display: 'flex', alignItems: 'center', gap: '0.4rem' } },
+      }, [
+        m('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.3rem' } }, [
+          m('div', { style: { display: 'flex', alignItems: 'center', gap: '0.4rem' } }, [
             m('strong', { style: { color: '#d2a8ff', fontSize: '0.82rem' } }, '🐙 GitHub Account:'),
             accountInput
-          ),
+          ]),
           m('a', { href: 'https://github.com/settings/tokens/new?scopes=repo', target: '_blank', style: { color: '#58a6ff', fontSize: '0.72rem', textDecoration: 'none' } }, 'Generate PAT on GitHub ↗')
-        ),
-        m('div', { style: { display: 'flex', gap: '0.4rem', alignItems: 'center', flexWrap: 'wrap' } },
+        ]),
+        m('div', { style: { display: 'flex', gap: '0.4rem', alignItems: 'center', flexWrap: 'wrap' } }, [
           tokenInput,
           m('button', {
             style: { padding: '0.45rem 0.75rem', background: '#271052', color: '#d2a8ff', border: '1px solid #8257e5', borderRadius: '6px', fontSize: '0.72rem', fontWeight: 'bold', cursor: 'pointer', fontFamily: 'monospace' },
-            onclick: function() {
+            onclick: () => {
               LunoDeployEngine.setGithubAccount(accountInput.value);
               LunoDeployEngine.setGithubToken(tokenInput.value);
               if (typeof ClientApp !== 'undefined' && ClientApp.showToast) {
@@ -726,58 +949,56 @@ class LunoDeployEngine {
               }
             }
           }, 'Save Credentials')
-        ),
+        ]),
         m('span', { style: { fontSize: '0.7rem', color: '#8b949e', lineHeight: '1.3' } },
           'With credentials saved, tapping "Deploy" pushes to ' + currentAccount + ' and activates GitHub Pages automatically.'
         )
-      );
+      ]);
 
-      var headerCard = m('div', {
+      const headerCard = m('div', {
         style: { background: 'linear-gradient(135deg, #0d2818 0%, #161b22 100%)', border: '2px solid #238636', borderRadius: '10px', padding: '1rem', marginBottom: '0.75rem', boxShadow: '0 4px 16px rgba(35,134,54,0.25)', fontFamily: 'monospace' }
-      },
-        m('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.4rem', marginBottom: '0.35rem' } },
-          m('h2', { style: { color: '#3fb950', fontSize: '1.2rem', margin: 0, display: 'flex', alignItems: 'center', gap: '0.4rem' } }, '🚀 GitHub Pages Multi-Repo Deployment Hub'),
+      }, [
+        m('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.4rem', marginBottom: '0.35rem' } }, [
+          m('h2', { style: { color: '#3fb950', fontSize: '1.2rem', margin: 0, display: 'flex', alignItems: 'center', gap: '0.4rem' } }, '🚀 Individual Repository Deployment'),
           m('span', { style: { fontSize: '0.72rem', color: '#00f2fe', background: '#003847', border: '1px solid #00f2fe', padding: '0.2rem 0.6rem', borderRadius: '12px', fontWeight: 'bold' } }, 'Account: ' + currentAccount)
-        ),
+        ]),
         m('p', { style: { fontSize: '0.78rem', color: '#c9d1d9', margin: 0, lineHeight: '1.4' } },
-          'Deploy each sibling project to its own independent GitHub repository under ',
-          m('strong', { style: { color: '#00f2fe' } }, currentAccount),
-          '.'
+          'Manage individual project deployments, commit history, and GitHub Pages links below.'
         )
-      );
+      ]);
 
-      var listArea = m('div', { id: 'deploy-projects-list', style: { display: 'flex', flexDirection: 'column', gap: '0.75rem' } },
+      const listArea = m('div', { id: 'deploy-projects-list', style: { display: 'flex', flexDirection: 'column', gap: '0.75rem' } }, [
         m('div', { style: { padding: '1rem', color: '#00f2fe', textAlign: 'center' } }, '⚡ Inspecting sibling Git repositories...')
-      );
+      ]);
 
+      container.appendChild(fleetSyncCard);
       container.appendChild(headerCard);
       container.appendChild(tokenCard);
       container.appendChild(listArea);
 
-      var pData = null;
+      let pData = null;
       try {
         if (typeof LunoApiClient !== 'undefined' && LunoApiClient.fetchProjectsList) {
           pData = await LunoApiClient.fetchProjectsList();
         } else {
-          var resP = await fetch('/api/projects/list');
+          const resP = await fetch('/api/projects/list');
           pData = await resP.json();
         }
-      } catch(e) {}
+      } catch (e) {}
 
-      var projects = (pData && Array.isArray(pData.projects)) ? pData.projects : [
-        { name: 'Basic3D' },
-        { name: 'guessTheNoteGame' },
-        { name: 'VideoEditor' },
-        { name: 'MathStorm' },
-        { name: 'BasicsWithDialogBox' },
+      const projects = (pData && Array.isArray(pData.projects)) ? pData.projects : [
+        { name: 'HomeSetup' },
+        { name: 'CadPlan' },
+        { name: 'accuCad' },
+        { name: 'TouchController' },
         { name: 'Luno' },
         { name: 'Library' }
       ];
 
       listArea.innerHTML = '';
-      for (var i = 0; i < projects.length; i++) {
-        var p = projects[i];
-        var card = await LunoDeployEngine.renderProjectDeployCard(p.name, m);
+      for (let i = 0; i < projects.length; i++) {
+        const p = projects[i];
+        const card = await LunoDeployEngine.renderProjectDeployCard(p.name, m);
         listArea.appendChild(card);
       }
     }
@@ -1103,6 +1324,28 @@ class LunoDeployEngine {
       return { success: false, error: err.message };
     }
   }
+
+  static async fleetSync(action = 'status', options = {}) {
+      const opts = options || {};
+      const commitMsg = opts.commitMsg || `[Fleet Sync] ${new Date().toLocaleString()}`;
+      const targetHost = opts.host || '';
+      const baseUrl = targetHost ? `http://${targetHost}:8080` : '';
+
+      try {
+        const res = await fetch(`${baseUrl}/api/git/fleet-sync`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-Luno-Client': '1' },
+          body: JSON.stringify({
+            action,
+            commitMsg,
+            branch: opts.branch || 'main'
+          })
+        });
+        return await res.json();
+      } catch (err) {
+        return { success: false, error: err.message };
+      }
+    }
 }
 
 globalThis.LunoDeployEngine = LunoDeployEngine;
