@@ -253,19 +253,16 @@ class LunoServer {
       if (normalized.startsWith('Luno Workspace/')) normalized = normalized.slice(15).trim();
       if (normalized.startsWith('LunoProjects/')) normalized = normalized.slice(13).trim();
 
-      // Canonical Single Server Anchor: Always resolve server.js to Luno/server.js
       if (normalized === 'server.js' || normalized === 'LunoProjects/server.js' || normalized === 'Luno/server.js') {
         return path.join(webRoot, 'Luno', 'server.js');
       }
 
-      // Canonical Single Loader Anchor: Always resolve LunoLoader.js to Library/LunoLoader.js
       if (normalized === 'LunoLoader.js' || normalized === 'app/LunoLoader.js' || normalized === 'Luno/app/LunoLoader.js' || normalized === 'Library/LunoLoader.js') {
         return path.join(webRoot, 'Library', 'LunoLoader.js');
       }
 
       const targetDir = baseDir || LunoServer.getRootDir();
 
-      // 0. Explicit resolution for Luno/ prefix
       if (normalized.startsWith('Luno/')) {
         const afterLuno = normalized.slice(5);
         const lunoInWebRoot = path.join(webRoot, 'Luno', afterLuno);
@@ -274,7 +271,6 @@ class LunoServer {
         if (fs.existsSync(lunoInTarget)) return lunoInTarget;
       }
 
-      // 1. Direct resolution for core/app files
       if (
         normalized.startsWith('app/') ||
         normalized.startsWith('core/') ||
@@ -286,46 +282,27 @@ class LunoServer {
         if (fs.existsSync(lunoPath)) return lunoPath;
         const webLunoPath = path.join(webRoot, 'Luno', normalized);
         if (fs.existsSync(webLunoPath)) return webLunoPath;
-
-        const fileName = path.basename(normalized);
-        const searchFolders = ['app', 'core', 'browser', 'docs', 'test'];
-        for (const fld of searchFolders) {
-          const candidate = path.join(LunoServer.getRootDir(), fld, fileName);
-          if (fs.existsSync(candidate)) return candidate;
-          const webCandidate = path.join(webRoot, 'Luno', fld, fileName);
-          if (fs.existsSync(webCandidate)) return webCandidate;
-        }
       }
 
-      // 2. Direct resolution for offline node_modules assets
-      if (normalized.startsWith('node_modules/')) {
-        const lunoModules = path.join(LunoServer.getRootDir(), normalized);
-        if (fs.existsSync(lunoModules)) return lunoModules;
-        const webModules = path.join(webRoot, normalized);
-        if (fs.existsSync(webModules)) return webModules;
-      }
-
-      // 3. Central Library resolution
       if (normalized.startsWith('Library/') || normalized.startsWith('library/')) {
-        const localCandidate = path.join(targetDir, normalized);
-        if (targetDir !== webRoot && path.basename(targetDir).toLowerCase() !== 'library') {
-          if (fs.existsSync(localCandidate)) {
-            return localCandidate;
-          }
-        }
         return path.join(webRoot, 'Library', normalized.replace(/^(?:Library|library)\//, ''));
       }
 
       if (path.isAbsolute(normalized)) {
         const resolvedAbs = path.resolve(normalized);
-        if (resolvedAbs.startsWith(webRoot)) {
-          return resolvedAbs;
-        }
+        if (resolvedAbs.startsWith(webRoot)) return resolvedAbs;
         throw new Error('[LunoServer Guard] Path boundary violation: "' + normalized + '" is outside workspace root.');
       }
 
       const segments = normalized.split('/');
       const firstSegment = segments[0];
+
+      // Sibling project rule: Capitalized project names (like Opus, CadPlan) always resolve to top-level sibling directories
+      const internalSubfolders = ['app', 'core', 'browser', 'docs', 'test', 'src', 'js', 'css', 'assets', 'content', 'state', 'logs', 'temp'];
+      if (!internalSubfolders.includes(firstSegment.toLowerCase()) && /^[A-Z][A-Za-z0-9_-]*$/.test(firstSegment)) {
+        return path.join(webRoot, normalized);
+      }
+
       const candidateDir = path.join(webRoot, firstSegment);
       if (fs.existsSync(candidateDir) && fs.statSync(candidateDir).isDirectory()) {
         return path.join(webRoot, normalized);
@@ -437,7 +414,7 @@ class LunoServer {
   }
 
   static async executeServerScript(rawCode, baseDir) {
-    if (!rawCode || !rawCode.trim()) return '';
+    if (!rawCode || !rawCode.trim()) return { feedback: '', result: null };
 
     const targetDir = baseDir || LunoServer.getRootDir();
     const logs = [];
@@ -479,12 +456,17 @@ class LunoServer {
       }
 
       const finalOutput = outputParts.length > 0 ? outputParts.join('\n\n') : 'Server script executed successfully with no output.';
-      return "⚡ SERVER SCRIPT OUTPUT:\n" + finalOutput + "\n\n";
+      return {
+        feedback: "⚡ SERVER SCRIPT OUTPUT:\n" + finalOutput + "\n\n",
+        result: result
+      };
     } catch (err) {
-      return "❌ SERVER SCRIPT ERROR:\n" + (err.stack || err.message) + "\n\n";
+      return {
+        feedback: "❌ SERVER SCRIPT ERROR:\n" + (err.stack || err.message) + "\n\n",
+        result: null
+      };
     }
   }
-
   static handleDeploy(req, res, url) {
     let body = '';
     req.on('data', chunk => { body += chunk; });
