@@ -999,6 +999,51 @@ class LunoClassPatcher {
 
       return null;
   }
+
+  static async processFileRequestContainer(scriptElement) {
+      if (!scriptElement || scriptElement.getAttribute('data-action') !== 'stage-files') {
+        return false;
+      }
+
+      try {
+        const raw = scriptElement.textContent.trim();
+        const files = JSON.parse(raw);
+        if (!Array.isArray(files) || files.length === 0) return false;
+
+        let stagedCount = 0;
+        for (const filePath of files) {
+          const cleanPath = filePath.replace(/^\/+/, '');
+          try {
+            const res = await fetch('/' + cleanPath);
+            if (res.ok) {
+              const content = await res.text();
+              if (typeof OutboxQueue !== 'undefined' && OutboxQueue.addItem) {
+                OutboxQueue.addItem(`File: ${cleanPath}`, content, {
+                  type: 'file',
+                  meta: { filePath: cleanPath, lines: content.split('\n').length }
+                });
+                stagedCount++;
+              }
+            }
+          } catch (err) {
+            console.warn(`[Luno] Could not stage ${cleanPath}:`, err);
+          }
+        }
+
+        if (stagedCount > 0) {
+          const msg = `📦 Staged ${stagedCount} requested file${stagedCount === 1 ? '' : 's'} into Outbox for your next prompt!`;
+          if (typeof UITools !== 'undefined' && UITools.showHUD) {
+            UITools.showHUD({ html: msg, autoClose: 3500, position: 'bottom-right' });
+          } else {
+            alert(msg);
+          }
+        }
+        return true;
+      } catch (e) {
+        console.error('[Luno] Failed to parse stage-files payload:', e);
+        return false;
+      }
+    }
 }
 
 if (typeof window !== 'undefined') window.LunoClassPatcher = LunoClassPatcher;
