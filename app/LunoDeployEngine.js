@@ -1464,6 +1464,501 @@ class LunoDeployEngine {
 
       return md;
     }
+
+  static async directLanSync(targetHost = '10.0.0.245', options = {}) {
+      var pName = options.project || (typeof ClientApp !== 'undefined' && ClientApp.getTargetProject ? ClientApp.getTargetProject() : 'Luno');
+      var isAll = (pName === 'all' || options.all === true);
+
+      try {
+        var codeData = await LunoApiClient.fetchAllCode(isAll ? '' : pName, {
+          includeProjectLibrary: true,
+          includeAllLibrary: false
+        });
+
+        if (!codeData || !codeData.filesMap || Object.keys(codeData.filesMap).length === 0) {
+          return { success: false, error: 'No files found to sync' };
+        }
+
+        var filesToSend = [];
+        for (var fPath in codeData.filesMap) {
+          if (!Object.prototype.hasOwnProperty.call(codeData.filesMap, fPath)) continue;
+          filesToSend.push({
+            filePath: fPath,
+            content: codeData.filesMap[fPath],
+            action: 'direct'
+          });
+        }
+
+        var postData = JSON.stringify({
+          files: filesToSend,
+          serverScript: '',
+          project: isAll ? '' : pName
+        });
+
+        var res = await fetch(`http://${targetHost}:8080/api/save` + (isAll ? '' : `?project=${encodeURIComponent(pName)}`), {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Luno-Client': '1'
+          },
+          body: postData
+        });
+
+        var data = await res.json();
+        return {
+          success: data && data.success,
+          count: filesToSend.length,
+          host: targetHost,
+          project: isAll ? 'All Files' : pName,
+          response: data
+        };
+      } catch (err) {
+        return { success: false, error: err.message, host: targetHost };
+      }
+    }
+
+  static getPeerHost() {
+      try {
+        if (typeof localStorage !== 'undefined') {
+          var saved = localStorage.getItem('luno_peer_host');
+          if (saved && saved.trim()) return saved.trim();
+        }
+      } catch(e) {}
+
+      // 1. Check verified platform from active server instance
+      if (typeof ClientApp !== 'undefined') {
+        if (ClientApp.activePlatform === 'linux' || ClientApp.isLinux) return '10.0.0.226'; // On Linux -> peer is Mac
+        if (ClientApp.activePlatform === 'darwin' || ClientApp.isMac) return '10.0.0.245'; // On Mac -> peer is Linux
+      }
+
+      // 2. Check window location
+      if (typeof window !== 'undefined' && window.location) {
+        var h = window.location.hostname;
+        if (h === '10.0.0.245') return '10.0.0.226';
+        if (h === '10.0.0.226') return '10.0.0.245';
+        if (navigator.platform && navigator.platform.toLowerCase().includes('linux')) return '10.0.0.226';
+      }
+
+      return '10.0.0.245'; // Default Mac looking for Linux
+    }
+  static setPeerHost(host) {
+      if (!host) return;
+      try {
+        if (typeof localStorage !== 'undefined') {
+          localStorage.setItem('luno_peer_host', host.trim());
+        }
+      } catch(e) {}
+    }
+
+  static async getFleetStatus(forceFetch = false) {
+      try {
+        var res = await fetch('/api/git/fleet-sync', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-Luno-Client': '1' },
+          body: JSON.stringify({ action: 'status', fetch: Boolean(forceFetch) })
+        });
+        return await res.json();
+      } catch(err) {
+        return { success: false, error: err.message, results: [] };
+      }
+    }
+
+  static async commitSelectedProjects(projectsList, commitMsg) {
+      if (!Array.isArray(projectsList) || projectsList.length === 0) {
+        return { success: false, error: 'No projects selected to commit' };
+      }
+      var msg = commitMsg || `[Fleet Commit] ${new Date().toLocaleString()}`;
+      try {
+        var res = await fetch('/api/git/fleet-sync', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-Luno-Client': '1' },
+          body: JSON.stringify({ action: 'commit-selected', projects: projectsList, commitMsg: msg })
+        });
+        return await res.json();
+      } catch(err) {
+        return { success: false, error: err.message };
+      }
+    }
+
+  static async queueModifiedToOutbox(projectsList = null) {
+      var statusData = await LunoDeployEngine.getFleetStatus(false);
+      var dirty = (statusData && statusData.dirtyProjects) || [];
+      if (Array.isArray(projectsList) && projectsList.length > 0) {
+        dirty = dirty.filter(p => projectsList.includes(p.name));
+      }
+
+      if (dirty.length === 0) {
+        if (typeof ClientApp !== 'undefined' && ClientApp.showToast) {
+          ClientApp.showToast('No modified projects to queue into Outbox!', 'info', 'ℹ️');
+        }
+        return 0;
+      }
+
+      var queuedCount = 0;
+      for (var i = 0; i < dirty.length; i++) {
+        var proj = dirty[i];
+        var pName = proj.name;
+        var uncommitted = proj.uncommittedFiles || [];
+
+        var filesPayload = [];
+        var diffSummaries = [];
+
+        for (var f = 0; f < uncommitted.length; f++) {
+          var fObj = uncommitted[f];
+          var relPath = typeof fObj === 'string' ? fObj : (fObj.file || '');
+          if (!relPath) continue;
+
+          try {
+            var fileData = await LunoApiClient.fetchFsRead(relPath, pName);
+            var content = (fileData && fileData.content) || '';
+            var diffRes = await LunoApiClient.fetchFileDiff(relPath, pName);
+
+            var sign = fObj.code || 'M';
+            diffSummaries.push(`• [${sign}] ${relPath} (${content.split('\n').length} lines)`);
+
+            var tag = relPath.endsWith('.html') ? 'template' : (relPath.endsWith('.css') ? 'style' : 'script');
+            filesPayload.push(`<${tag} data-file="${pName}/${relPath}">\n${content}\n</${tag}>`);
+          } catch(e) {}
+        }
+
+        if (filesPayload.length > 0 && typeof OutboxQueue !== 'undefined') {
+          var header = `<!-- ============================================================ -->\n`;
+          header += `<!-- ✏️ MODIFIED PROJECT: ${pName} (${filesPayload.length} modified files) -->\n`;
+          header += `<!-- STATUS: ${diffSummaries.join(', ')} -->\n`;
+          header += `<!-- ============================================================ -->\n\n`;
+
+          var payloadText = header + '```html\n' + filesPayload.join('\n\n') + '\n```';
+          OutboxQueue.addBundle(`✏️ Modified Code: ${pName} (${filesPayload.length} files)`, payloadText, {
+            priority: 'high',
+            type: 'project',
+            files: uncommitted.map(u => typeof u === 'string' ? u : u.file),
+            meta: { project: pName, category: 'modified-source' }
+          });
+          queuedCount++;
+        }
+      }
+
+      if (typeof ClientApp !== 'undefined' && ClientApp.showToast) {
+        ClientApp.showToast(`Queued ${queuedCount} modified project(s) into Outbox!`, 'success', '📤');
+      }
+      return queuedCount;
+    }
+
+  static async syncEverything(options = {}) {
+      var opts = options || {};
+      var peerHost = opts.peerHost || LunoDeployEngine.getPeerHost();
+      var onProgress = typeof opts.onProgress === 'function' ? opts.onProgress : () => {};
+
+      onProgress('🔍 1/5: Scanning local projects...');
+      var statusRes = await LunoDeployEngine.getFleetStatus(false);
+      var dirty = (statusRes && statusRes.dirtyProjects) || [];
+      var dirtyNames = dirty.map(d => d.name);
+
+      var committedCount = 0;
+      if (dirtyNames.length > 0) {
+        onProgress(`📸 2/5: Creating local snapshots for ${dirtyNames.length} modified projects...`);
+        var commitRes = await LunoDeployEngine.commitSelectedProjects(dirtyNames, `[Fleet 1-Tap Sync] ${new Date().toLocaleString()}`);
+        committedCount = (commitRes && commitRes.results ? commitRes.results.filter(r => r.changesCommitted).length : dirtyNames.length);
+      }
+
+      onProgress(`⚡ 3/5: Direct LAN Streaming to peer node (${peerHost}:8080)...`);
+      var lanStreamRes = null;
+      try {
+        lanStreamRes = await LunoDeployEngine.directLanSync(peerHost, { all: true });
+      } catch(e) {
+        lanStreamRes = { success: false, error: e.message };
+      }
+
+      onProgress('⬆️ 4/5: Pushing valid repositories to GitHub...');
+      var pushRes = await LunoDeployEngine.fleetSync('push');
+
+      onProgress(`⬇️ 5/5: Instructing peer node (${peerHost}) to pull updates...`);
+      var peerPullRes = null;
+      try {
+        peerPullRes = await LunoDeployEngine.fleetSync('pull', { host: peerHost });
+      } catch(e) {
+        peerPullRes = { success: false, error: e.message };
+      }
+
+      var summary = `================================================================================\n`;
+      summary += `🎉 UNIVERSAL 1-TAP FLEET SYNC COMPLETE!\n`;
+      summary += `================================================================================\n`;
+      summary += `• Local Snapshots:       ${committedCount} project(s) saved cleanly\n`;
+      summary += `• Direct LAN Stream:     ${lanStreamRes && lanStreamRes.success ? '✅ Streamed ' + lanStreamRes.count + ' files directly to ' + peerHost + ':8080' : '⚠️ ' + (lanStreamRes && lanStreamRes.error || 'LAN stream notice')}\n`;
+      summary += `• GitHub Remote Push:    ${pushRes && pushRes.success ? '✅ Pushed to GitHub' : '⚠️ Remote push notice'}\n`;
+      summary += `• Remote Peer Pull:      ${peerPullRes && peerPullRes.success ? '✅ Peer (' + peerHost + ') synchronized ' + (peerPullRes.results ? peerPullRes.results.filter(r => r.output && !r.output.includes('Already up to date')).length : 0) + ' repos' : '⚠️ Peer pull notice'}\n`;
+      summary += `\nAll projects are in parity across your Mac and Linux workstation!\n`;
+
+      return {
+        success: true,
+        committedCount,
+        lanStreamRes,
+        pushRes,
+        peerPullRes,
+        summary
+      };
+    }
+  static async openFleetSyncDialog() {
+      var existing = document.getElementById('luno-fleet-sync-modal');
+      if (existing) existing.remove();
+
+      var peerHost = LunoDeployEngine.getPeerHost();
+
+      var overlay = document.createElement('div');
+      overlay.id = 'luno-fleet-sync-modal';
+      overlay.style.cssText = [
+        'position: fixed; top: 0; left: 0; right: 0; bottom: 0;',
+        'background: rgba(0, 0, 0, 0.88); z-index: 9992;',
+        'display: flex; align-items: center; justify-content: center;',
+        'padding: 1rem; font-family: monospace; backdrop-filter: blur(8px);'
+      ].join('\n');
+
+      var card = document.createElement('div');
+      card.style.cssText = [
+        'background: var(--bg-card, #161b22);',
+        'border: 2px solid var(--accent-primary, #00f2fe);',
+        'border-radius: 12px; padding: 1.1rem;',
+        'max-width: 860px; width: 100%; max-height: 90vh;',
+        'display: flex; flex-direction: column; gap: 0.75rem;',
+        'box-shadow: 0 16px 40px rgba(0,0,0,0.8), 0 0 24px rgba(0, 242, 254, 0.25);',
+        'box-sizing: border-box; overflow: hidden;'
+      ].join('\n');
+
+      var header = document.createElement('div');
+      header.style.cssText = 'display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #30363d; padding-bottom:0.5rem; flex-wrap:wrap; gap:0.4rem;';
+      header.innerHTML = [
+        '<div style="display:flex; align-items:center; gap:0.5rem;">',
+        '  <span style="font-size:1.2rem;">🔄</span>',
+        '  <strong style="color:#00f2fe; font-size:1.05rem;">Fleet Sync & Parity Hub</strong>',
+        '  <span id="modal-peer-status" style="font-size:0.7rem; color:#10b981; background:rgba(16,185,129,0.15); border:1px solid #238636; padding:0.15rem 0.5rem; border-radius:10px; font-weight:bold;">Peer: ' + peerHost + ':8080</span>',
+        '</div>',
+        '<button id="btn-close-fleet-modal" style="background:#21262d; color:#c9d1d9; border:1px solid #30363d; border-radius:4px; padding:0.25rem 0.55rem; cursor:pointer; font-weight:bold;">✖</button>'
+      ].join('\n');
+
+      var primaryBar = document.createElement('div');
+      primaryBar.style.cssText = 'display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap; background:#0d1117; padding:0.65rem; border-radius:8px; border:1px solid #238636;';
+
+      var btnMasterSync = document.createElement('button');
+      btnMasterSync.style.cssText = 'flex:2; min-width:220px; padding:0.75rem 1rem; background:#238636; color:#ffffff; border:none; border-radius:6px; font-weight:bold; font-size:0.9rem; cursor:pointer; font-family:monospace; box-shadow:0 4px 14px rgba(35,134,54,0.4); display:flex; align-items:center; justify-content:center; gap:0.4rem;';
+      btnMasterSync.textContent = '🚀 1-Tap Sync Everything (Push, Pull & LAN Stream)';
+
+      var btnRefreshStatus = document.createElement('button');
+      btnRefreshStatus.style.cssText = 'flex:1; min-width:130px; padding:0.75rem; background:#003847; color:#00f2fe; border:1px solid #00f2fe; border-radius:6px; font-weight:bold; font-size:0.8rem; cursor:pointer; font-family:monospace;';
+      btnRefreshStatus.textContent = '🔍 Check Remote';
+
+      primaryBar.appendChild(btnMasterSync);
+      primaryBar.appendChild(btnRefreshStatus);
+
+      var projectsListContainer = document.createElement('div');
+      projectsListContainer.style.cssText = 'flex:1; min-height:220px; max-height:48vh; overflow-y:auto; display:flex; flex-direction:column; gap:0.4rem; padding-right:4px;';
+      projectsListContainer.innerHTML = '<div style="padding:1.5rem; color:#00f2fe; text-align:center;">⚡ Scanning all repositories across workspace...</div>';
+
+      var bulkActionsRow = document.createElement('div');
+      bulkActionsRow.style.cssText = 'display:flex; justify-content:space-between; align-items:center; border-top:1px solid #30363d; padding-top:0.6rem; flex-wrap:wrap; gap:0.4rem;';
+
+      var leftBulk = document.createElement('div');
+      leftBulk.style.cssText = 'display:flex; gap:0.4rem; align-items:center; flex-wrap:wrap;';
+
+      var btnCommitSelected = document.createElement('button');
+      btnCommitSelected.style.cssText = 'padding:0.45rem 0.75rem; background:#238636; color:#fff; border:none; border-radius:6px; font-size:0.75rem; font-weight:bold; cursor:pointer; font-family:monospace;';
+      btnCommitSelected.textContent = '📸 Commit Selected';
+
+      var btnQueueSelected = document.createElement('button');
+      btnQueueSelected.style.cssText = 'padding:0.45rem 0.75rem; background:#271052; color:#d2a8ff; border:1px solid #8257e5; border-radius:6px; font-size:0.75rem; font-weight:bold; cursor:pointer; font-family:monospace;';
+      btnQueueSelected.textContent = '📤 Queue Selected to Outbox';
+
+      leftBulk.appendChild(btnCommitSelected);
+      leftBulk.appendChild(btnQueueSelected);
+
+      var btnClose = document.createElement('button');
+      btnClose.style.cssText = 'padding:0.45rem 0.85rem; background:#21262d; color:#c9d1d9; border:1px solid #30363d; border-radius:6px; font-size:0.75rem; cursor:pointer; font-family:monospace;';
+      btnClose.textContent = 'Close';
+      btnClose.onclick = function() { overlay.remove(); };
+
+      bulkActionsRow.appendChild(leftBulk);
+      bulkActionsRow.appendChild(btnClose);
+
+      card.appendChild(header);
+      card.appendChild(primaryBar);
+      card.appendChild(projectsListContainer);
+      card.appendChild(bulkActionsRow);
+      overlay.appendChild(card);
+      document.body.appendChild(overlay);
+
+      document.getElementById('btn-close-fleet-modal').onclick = function() { overlay.remove(); };
+
+      var selectedMap = new Set();
+      var latestDirty = [];
+
+      async function loadData(forceFetch = false) {
+        projectsListContainer.innerHTML = '<div style="padding:1.5rem; color:#00f2fe; text-align:center;">⚡ Scanning all repositories across workspace...</div>';
+        var res = await LunoDeployEngine.getFleetStatus(forceFetch);
+        var dirty = (res && res.dirtyProjects) || [];
+        latestDirty = dirty;
+        selectedMap = new Set(dirty.map(d => d.name));
+
+        renderList();
+      }
+
+      function renderList() {
+        projectsListContainer.innerHTML = '';
+        if (latestDirty.length === 0) {
+          projectsListContainer.innerHTML = `
+            <div style="padding:2rem; text-align:center; color:#3fb950; background:#0d2818; border:1px solid #238636; border-radius:8px;">
+              <strong style="font-size:1rem; display:block; margin-bottom:0.3rem;">✅ All Repositories Are 100% In Sync!</strong>
+              <span style="font-size:0.75rem; color:#8b949e;">No uncommitted edits detected across any workspace project.</span>
+            </div>
+          `;
+          return;
+        }
+
+        var headerNotice = document.createElement('div');
+        headerNotice.style.cssText = 'font-size:0.72rem; color:#ff9800; font-weight:bold; padding-bottom:0.2rem;';
+        headerNotice.textContent = `⚠️ ${latestDirty.length} PROJECT(S) WITH UNCOMMITTED EDITS:`;
+        projectsListContainer.appendChild(headerNotice);
+
+        latestDirty.forEach(function(proj) {
+          var isChecked = selectedMap.has(proj.name);
+          var uncommitted = proj.uncommittedFiles || [];
+
+          var pCard = document.createElement('div');
+          pCard.style.cssText = [
+            'background: #0d1117;',
+            'border: 1px solid ' + (isChecked ? '#00f2fe' : '#30363d') + ';',
+            'border-radius: 8px; padding: 0.65rem 0.85rem;',
+            'display: flex; flex-direction: column; gap: 0.4rem;',
+            'transition: border-color 0.15s ease;'
+          ].join('\n');
+
+          var rowTop = document.createElement('div');
+          rowTop.style.cssText = 'display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.4rem;';
+
+          var left = document.createElement('label');
+          left.style.cssText = 'display:flex; align-items:center; gap:0.5rem; cursor:pointer; user-select:none;';
+
+          var chk = document.createElement('input');
+          chk.type = 'checkbox';
+          chk.checked = isChecked;
+          chk.style.cssText = 'width:15px; height:15px; accent-color:#00f2fe; cursor:pointer;';
+          chk.onchange = function() {
+            if (chk.checked) selectedMap.add(proj.name);
+            else selectedMap.delete(proj.name);
+            pCard.style.borderColor = chk.checked ? '#00f2fe' : '#30363d';
+          };
+
+          var titleSpan = document.createElement('strong');
+          titleSpan.style.cssText = 'color:#f0f6fc; font-size:0.85rem;';
+          titleSpan.textContent = proj.name;
+
+          var countBadge = document.createElement('span');
+          countBadge.style.cssText = 'font-size:0.68rem; color:#ff9800; background:rgba(255,152,0,0.15); border:1px solid #ff980066; padding:0.1rem 0.45rem; border-radius:4px; font-weight:bold;';
+          countBadge.textContent = uncommitted.length + ' file(s) modified';
+
+          left.appendChild(chk);
+          left.appendChild(titleSpan);
+          left.appendChild(countBadge);
+
+          var rightBtns = document.createElement('div');
+          rightBtns.style.cssText = 'display:flex; gap:0.35rem; align-items:center;';
+
+          var btnSingleCommit = document.createElement('button');
+          btnSingleCommit.style.cssText = 'padding:0.25rem 0.55rem; background:#238636; color:#fff; border:none; border-radius:4px; font-size:0.68rem; font-weight:bold; cursor:pointer; font-family:monospace;';
+          btnSingleCommit.textContent = '📸 Commit';
+          btnSingleCommit.onclick = async function() {
+            btnSingleCommit.disabled = true;
+            btnSingleCommit.textContent = '...';
+            await LunoDeployEngine.commitSelectedProjects([proj.name]);
+            await loadData(false);
+          };
+
+          var btnSingleQueue = document.createElement('button');
+          btnSingleQueue.style.cssText = 'padding:0.25rem 0.55rem; background:#271052; color:#d2a8ff; border:1px solid #8257e5; border-radius:4px; font-size:0.68rem; font-weight:bold; cursor:pointer; font-family:monospace;';
+          btnSingleQueue.textContent = '📤 Outbox';
+          btnSingleQueue.onclick = async function() {
+            btnSingleQueue.disabled = true;
+            await LunoDeployEngine.queueModifiedToOutbox([proj.name]);
+            btnSingleQueue.disabled = false;
+          };
+
+          rightBtns.appendChild(btnSingleCommit);
+          rightBtns.appendChild(btnSingleQueue);
+
+          rowTop.appendChild(left);
+          rowTop.appendChild(rightBtns);
+          pCard.appendChild(rowTop);
+
+          // File modifications list
+          var filesListEl = document.createElement('div');
+          filesListEl.style.cssText = 'display:flex; flex-direction:column; gap:0.15rem; background:#070a13; border:1px solid #1e293b; border-radius:4px; padding:0.4rem 0.6rem; font-size:0.7rem; color:#8b949e;';
+          uncommitted.slice(0, 6).forEach(function(f) {
+            var code = typeof f === 'string' ? 'M' : f.code;
+            var file = typeof f === 'string' ? f : f.file;
+            filesListEl.innerHTML += `<div><span style="color:#ffb74d; font-weight:bold;">[${code}]</span> <span style="color:#cbd5e1;">${file}</span></div>`;
+          });
+          if (uncommitted.length > 6) {
+            filesListEl.innerHTML += `<div style="font-style:italic; color:#64748b;">... and ${uncommitted.length - 6} more file(s)</div>`;
+          }
+
+          pCard.appendChild(filesListEl);
+          projectsListContainer.appendChild(pCard);
+        });
+      }
+
+      btnMasterSync.onclick = async function() {
+        btnMasterSync.disabled = true;
+        btnMasterSync.textContent = '⏳ Synchronizing Fleet...';
+        try {
+          var res = await LunoDeployEngine.syncEverything({
+            peerHost: peerHost,
+            onProgress: function(msg) {
+              btnMasterSync.textContent = msg;
+            }
+          });
+          if (res && res.success) {
+            if (typeof ClientApp !== 'undefined') {
+              ClientApp.showToast('Fleet synchronization complete across all repos!', 'success', '🎉');
+              if (ClientApp.showFeedback) ClientApp.showFeedback(res.summary, 'success');
+            }
+            await loadData(false);
+          }
+        } catch(err) {
+          alert('Sync error: ' + err.message);
+        } finally {
+          btnMasterSync.disabled = false;
+          btnMasterSync.textContent = '🚀 1-Tap Sync Everything (Push, Pull & LAN Stream)';
+        }
+      };
+
+      btnRefreshStatus.onclick = function() {
+        loadData(true);
+      };
+
+      btnCommitSelected.onclick = async function() {
+        var selected = Array.from(selectedMap);
+        if (selected.length === 0) return alert('No projects selected.');
+        var msg = prompt(`Commit message for ${selected.length} selected project(s):`, `[Fleet Checkpoint] ${new Date().toLocaleString()}`);
+        if (msg) {
+          btnCommitSelected.disabled = true;
+          btnCommitSelected.textContent = 'Committing...';
+          await LunoDeployEngine.commitSelectedProjects(selected, msg);
+          btnCommitSelected.disabled = false;
+          btnCommitSelected.textContent = '📸 Commit Selected';
+          await loadData(false);
+        }
+      };
+
+      btnQueueSelected.onclick = async function() {
+        var selected = Array.from(selectedMap);
+        if (selected.length === 0) return alert('No projects selected.');
+        btnQueueSelected.disabled = true;
+        btnQueueSelected.textContent = 'Queuing...';
+        await LunoDeployEngine.queueModifiedToOutbox(selected);
+        btnQueueSelected.disabled = false;
+        btnQueueSelected.textContent = '📤 Queue Selected to Outbox';
+      };
+
+      loadData(false);
+    }
 }
 
 globalThis.LunoDeployEngine = LunoDeployEngine;

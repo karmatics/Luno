@@ -977,6 +977,7 @@ class LunoServer {
           }
         }
 
+        // Enhanced LAN Info with deterministic peer target resolution
         if (method === 'GET' && url.pathname === '/api/lan-info') {
           const os = require('os');
           const nets = os.networkInterfaces();
@@ -988,22 +989,56 @@ class LunoServer {
               }
             }
           }
+          const platform = os.platform(); // 'darwin' or 'linux'
+          const isMac = platform === 'darwin';
+          const isLinux = platform === 'linux';
+          const suggestedPeer = isMac ? '10.0.0.245' : '10.0.0.226';
+
           return LunoServer.sendJSON(res, 200, {
             hostname: os.hostname(),
-            platform: os.platform(),
+            platform: platform,
+            isMac,
+            isLinux,
             ips: ipList,
             primaryIp: ipList[0]?.address || '127.0.0.1',
             port: process.env.PORT || 8080,
+            suggestedPeer: suggestedPeer,
+            peerUrl: `http://${suggestedPeer}:8080`,
             rootDir: LunoServer.getRootDir(),
             webRootDir: LunoServer.getWebRootDir()
           });
         }
 
+        // Universal Fleet Manifest for fast direct 50-project diffing
+        if (method === 'GET' && url.pathname === '/api/fleet/manifest') {
+          const items = fs.readdirSync(webRoot);
+          const manifest = {};
+          for (const item of items) {
+            if (item.startsWith('.') || item.startsWith('_') || item === 'node_modules') continue;
+            const pDir = path.join(webRoot, item);
+            try {
+              if (fs.statSync(pDir).isDirectory()) {
+                const files = {};
+                function scan(dir, rel = '') {
+                  for (const f of fs.readdirSync(dir)) {
+                    if (f.startsWith('.') || f === 'node_modules' || f.endsWith('.bak')) continue;
+                    const fPath = path.join(dir, f);
+                    const curRel = rel ? (rel + '/' + f) : f;
+                    const st = fs.statSync(fPath);
+                    if (st.isDirectory()) scan(fPath, curRel);
+                    else if (st.isFile()) files[curRel] = { size: st.size, mtime: st.mtimeMs };
+                  }
+                }
+                scan(pDir);
+                manifest[item] = { fileCount: Object.keys(files).length, files };
+              }
+            } catch(e) {}
+          }
+          return LunoServer.sendJSON(res, 200, { success: true, host: require('os').hostname(), manifest });
+        }
+
         if (method === 'GET' && (url.pathname === '/setup-linux.sh' || url.pathname === '/api/setup-linux')) {
-          res.writeHead(200, {
-            'Content-Type': 'text/x-shellscript; charset=utf-8',
-            'Cache-Control': 'no-cache'
-          });
+          res.writeHead(200, { 'Content-Type': 'text/x-shellscript; charset=utf-8', 'Cache-Control': 'no-cache' });
           return res.end(LunoServer.getLinuxSetupScript(req));
         }
 
@@ -1048,7 +1083,17 @@ class LunoServer {
         }
 
         if (method === 'GET' && url.pathname === '/api/ping') {
-          return LunoServer.sendJSON(res, 200, { status: "online", pid: process.pid, rootDir: LunoServer.getRootDir(), version: LunoServer.VERSION });
+          const platform = require('os').platform();
+          return LunoServer.sendJSON(res, 200, {
+            status: "online",
+            pid: process.pid,
+            platform: platform,
+            isMac: platform === 'darwin',
+            isLinux: platform === 'linux',
+            suggestedPeer: platform === 'darwin' ? '10.0.0.245' : '10.0.0.226',
+            rootDir: LunoServer.getRootDir(),
+            version: LunoServer.VERSION
+          });
         }
 
         if (method === 'GET' && url.pathname === '/api/projects/list') {
@@ -1083,12 +1128,10 @@ class LunoServer {
           return LunoServer.handleGitCommitDetails(req, res, url);
         }
 
-        // Single project Git pull
         if (method === 'POST' && url.pathname === '/api/git/pull') {
           return LunoServer.handleGitPull(req, res, url);
         }
 
-        // Fleet-wide multi-repo Git operations
         if (method === 'POST' && (url.pathname === '/api/git/fleet-sync' || url.pathname === '/api/deploy/all')) {
           return LunoServer.handleFleetSync(req, res, url);
         }
@@ -1646,6 +1689,7 @@ static serveIndex(req, res) {
           const branch = parsed.branch || 'main';
           const autocommit = parsed.autocommit !== false;
           const doFetch = parsed.fetch !== false;
+          const selectedProjects = Array.isArray(parsed.projects) ? parsed.projects : null;
           const webRoot = LunoServer.getWebRootDir();
 
           if (!fs.existsSync(webRoot)) {
@@ -1658,6 +1702,7 @@ static serveIndex(req, res) {
 
           for (const item of items) {
             if (item.startsWith('.') || item.startsWith('_') || ignored.includes(item.toLowerCase())) continue;
+            if (selectedProjects && !selectedProjects.includes(item)) continue;
             const projDir = path.join(webRoot, item);
             try {
               if (fs.statSync(projDir).isDirectory() && fs.existsSync(path.join(projDir, '.git'))) {
@@ -1673,7 +1718,6 @@ static serveIndex(req, res) {
             });
           });
 
-          // Process repositories in concurrent batches of 8 for high speed
           const results = [];
           const BATCH_SIZE = 8;
 
@@ -1695,21 +1739,22 @@ static serveIndex(req, res) {
 
               const remRes = await pExec('git remote get-url origin', envOpts);
               const remoteUrl = remRes.stdout.trim();
-              if (!remoteUrl) {
-                return { name: item, status: 'no-remote', message: 'No git remote configured' };
-              }
-
               const brRes = await pExec('git branch --show-current', envOpts);
               const currentBranch = brRes.stdout.trim() || 'main';
 
-              if (action === 'status') {
-                const stRes = await pExec('git status --short', envOpts);
-                const statusText = stRes.stdout.trim();
+              const stRes = await pExec('git status --short', envOpts);
+              const statusText = stRes.stdout.trim();
+              const uncommittedFiles = statusText ? statusText.split('\n').map(l => {
+                const code = l.slice(0, 2).trim();
+                const file = l.slice(3).trim().replace(/^"|"$/g, '');
+                return { code, file };
+              }) : [];
 
+              if (action === 'status') {
                 let behindCount = 0;
                 let aheadCount = 0;
 
-                if (doFetch) {
+                if (doFetch && remoteUrl) {
                   await pExec(`git fetch -q origin ${currentBranch}`, { ...envOpts, timeout: 6000 });
                   const behindRes = await pExec(`git rev-list --count HEAD..origin/${currentBranch}`, envOpts);
                   const aheadRes = await pExec(`git rev-list --count origin/${currentBranch}..HEAD`, envOpts);
@@ -1721,20 +1766,44 @@ static serveIndex(req, res) {
                   name: item,
                   branch: currentBranch,
                   remoteUrl,
-                  hasUncommitted: statusText.length > 0,
-                  uncommittedLines: statusText ? statusText.split('\n').length : 0,
+                  hasUncommitted: uncommittedFiles.length > 0,
+                  uncommittedFiles,
+                  uncommittedCount: uncommittedFiles.length,
                   behind: behindCount,
                   ahead: aheadCount,
                   needPull: behindCount > 0,
-                  needPush: aheadCount > 0 || statusText.length > 0,
+                  needPush: aheadCount > 0 || uncommittedFiles.length > 0,
                   statusText
+                };
+              } else if (action === 'commit' || action === 'commit-selected') {
+                if (uncommittedFiles.length === 0) {
+                  return { name: item, success: true, changesCommitted: false, message: 'Already clean' };
+                }
+
+                const addRes = await pExec('git add -A', envOpts);
+                const commitRes = await pExec(`git commit -m "${commitMsg.replace(/"/g, '\\"')}"`, envOpts);
+
+                const lj = path.join(projDir, 'luno.json');
+                if (fs.existsSync(lj)) {
+                  try {
+                    const meta = JSON.parse(fs.readFileSync(lj, 'utf8'));
+                    meta.processedCountSinceCheckpoint = 0;
+                    meta.lastCheckpointTime = new Date().toISOString();
+                    meta.pendingCheckpointDescription = 'Clean working tree';
+                    fs.writeFileSync(lj, JSON.stringify(meta, null, 2), 'utf8');
+                  } catch(e) {}
+                }
+
+                return {
+                  name: item,
+                  action: 'commit',
+                  success: commitRes.ok,
+                  changesCommitted: commitRes.ok,
+                  output: (commitRes.stdout || commitRes.stderr).trim()
                 };
               } else if (action === 'pull') {
                 let autocommitted = false;
-                const stRes = await pExec('git status --short', envOpts);
-                const statusText = stRes.stdout.trim();
-
-                if (statusText && autocommit) {
+                if (uncommittedFiles.length > 0 && autocommit) {
                   await pExec('git add -A', envOpts);
                   await pExec(`git commit -m "[Auto-Snapshot before Fleet Pull] ${new Date().toLocaleString()}"`, envOpts);
                   autocommitted = true;
@@ -1755,15 +1824,12 @@ static serveIndex(req, res) {
                 };
               } else if (action === 'push') {
                 let changesCommitted = false;
-                const stRes = await pExec('git status --short', envOpts);
-                const statusText = stRes.stdout.trim();
-
                 const nj = path.join(projDir, '.nojekyll');
                 if (!fs.existsSync(nj)) {
                   try { fs.writeFileSync(nj, '', 'utf8'); } catch (e) {}
                 }
 
-                if (statusText) {
+                if (uncommittedFiles.length > 0) {
                   await pExec('git add -A', envOpts);
                   await pExec(`git commit -m "${commitMsg.replace(/"/g, '\\"')}"`, envOpts);
                   changesCommitted = true;
@@ -1798,6 +1864,7 @@ static serveIndex(req, res) {
 
           const conflictCount = results.filter(r => r && r.hasConflicts).length;
           const failedCount = results.filter(r => r && r.success === false).length;
+          const dirtyProjects = results.filter(r => r && (r.hasUncommitted || (r.uncommittedCount && r.uncommittedCount > 0)));
 
           return LunoServer.sendJSON(res, 200, {
             success: failedCount === 0 && conflictCount === 0,
@@ -1807,6 +1874,8 @@ static serveIndex(req, res) {
             hasConflicts: conflictCount > 0,
             conflictCount,
             failedCount,
+            dirtyCount: dirtyProjects.length,
+            dirtyProjects,
             results
           });
         } catch (err) {

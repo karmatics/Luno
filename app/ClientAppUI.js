@@ -416,7 +416,7 @@ class ClientAppUI {
       var btnAction = el('button', {
         id: 'btn-frontpage-checkpoint-exec',
         style: {
-          flex: '1.4 1 200px',
+          flex: '1.4 1 180px',
           padding: '0.75rem',
           background: 'var(--accent-green, #238636)',
           color: '#ffffff',
@@ -434,7 +434,7 @@ class ClientAppUI {
       var btnPullSingle = el('button', {
         id: 'btn-frontpage-pull-project',
         style: {
-          flex: '1 1 140px',
+          flex: '1 1 120px',
           padding: '0.75rem',
           background: '#003847',
           color: '#00f2fe',
@@ -452,6 +452,56 @@ class ClientAppUI {
         },
         title: 'Pull latest commits from remote for [' + currentTarget + ']'
       }, '⬇️ Pull [' + currentTarget + ']');
+
+      var btnDirectLan = el('button', {
+        id: 'btn-direct-lan-sync-linux',
+        style: {
+          flex: '1 1 140px',
+          padding: '0.75rem',
+          background: '#271052',
+          color: '#d2a8ff',
+          border: '1px solid #8257e5',
+          borderRadius: '6px',
+          fontWeight: 'bold',
+          fontSize: '0.82rem',
+          cursor: 'pointer',
+          fontFamily: 'monospace',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: '0.35rem',
+          boxShadow: '0 4px 12px rgba(130,87,229,0.3)',
+          transition: 'all 0.15s ease'
+        },
+        title: 'Push files directly to Linux node over LAN HTTP Port 8080 (No Git/SSH needed)'
+      }, '⚡ Direct LAN Sync ➔ Linux');
+
+      btnDirectLan.onclick = async function() {
+        btnDirectLan.disabled = true;
+        btnDirectLan.textContent = '⏳ Streaming to Linux...';
+        if (typeof ClientApp !== 'undefined' && ClientApp.showToast) {
+          ClientApp.showToast(`Streaming [${currentTarget}] directly to Linux over Port 8080...`, 'info', '⚡');
+        }
+
+        try {
+          var res = await LunoDeployEngine.directLanSync('10.0.0.245', { project: currentTarget });
+          if (res && res.success) {
+            if (typeof ClientApp !== 'undefined') {
+              ClientApp.showToast(`Direct LAN Sync Complete! Wrote ${res.count} files to Linux SSD.`, 'success', '🎉');
+              if (ClientApp.showFeedback) {
+                ClientApp.showFeedback(`⚡ DIRECT LAN SYNC RESULT [${currentTarget}]:\n\nStreamed ${res.count} file(s) directly to http://10.0.0.245:8080/api/save.\nZero Git/SSH required. Files are live on the Linux machine!`, 'success');
+              }
+            }
+          } else {
+            alert('Direct LAN Sync error: ' + (res && (res.error || JSON.stringify(res))));
+          }
+        } catch(err) {
+          alert('Direct LAN Sync exception: ' + err.message);
+        } finally {
+          btnDirectLan.disabled = false;
+          btnDirectLan.textContent = '⚡ Direct LAN Sync ➔ Linux';
+        }
+      };
 
       chkDeployPages.onchange = function() {
         if (chkDeployPages.checked) {
@@ -525,13 +575,6 @@ class ClientAppUI {
             if (typeof ClientApp !== 'undefined' && ClientApp.showFeedback) {
               ClientApp.showFeedback('⚠️ Pull Notice / Conflicts [' + currentTarget + ']:\n\n' + errOut, 'error');
             }
-            if (res && res.hasConflicts && typeof OutboxQueue !== 'undefined') {
-              var conflictReport = `# MERGE CONFLICT REPORT: [${currentTarget}]\n\nOutput:\n\`\`\`\n${errOut}\n\`\`\``;
-              OutboxQueue.addBundle(`Conflict Report: ${currentTarget}`, conflictReport, { priority: 'high' });
-              if (typeof ClientApp !== 'undefined' && ClientApp.showToast) {
-                ClientApp.showToast('Merge conflicts queued to Outbox for LLM assistance!', 'info', '📤');
-              }
-            }
           }
         } catch(err) {
           if (typeof ClientApp !== 'undefined' && ClientApp.showFeedback) {
@@ -572,127 +615,6 @@ class ClientAppUI {
           }
         }
       }, '📜 Clone Script');
-
-      // Fleet-Wide Multi-Repo Sync Toolbar inside Checkpoint card
-      var fleetMeshBar = el('div', {
-        id: 'home-fleet-sync-strip',
-        style: {
-          background: '#0d1117',
-          border: '1px solid var(--border-color, #30363d)',
-          borderRadius: '6px',
-          padding: '0.55rem 0.75rem',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: '0.45rem'
-        }
-      },
-        el('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.35rem' } },
-          el('div', { style: { display: 'flex', alignItems: 'center', gap: '0.4rem' } },
-            el('strong', { style: { color: 'var(--text-accent, #00f2fe)', fontSize: '0.78rem' } }, '🔄 FLEET GIT MESH:'),
-            el('span', { style: { color: 'var(--text-secondary, #8b949e)', fontSize: '0.7rem' } }, 'Multi-repo sync across 44 projects')
-          ),
-          el('span', { id: 'home-fleet-status-badge', style: { color: 'var(--accent-green, #3fb950)', fontSize: '0.68rem', fontWeight: 'bold' } }, 'Ready')
-        ),
-        el('div', { style: { display: 'flex', gap: '0.35rem', flexWrap: 'wrap' } },
-          el('button', {
-            style: { flex: '1 1 95px', padding: '0.35rem 0.55rem', background: '#003847', color: '#00f2fe', border: '1px solid #00f2fe66', borderRadius: '4px', fontSize: '0.72rem', fontWeight: 'bold', cursor: 'pointer', fontFamily: 'monospace' },
-            onclick: async function() {
-              var b = el;
-              var badge = document.getElementById('home-fleet-status-badge');
-              if (badge) { badge.textContent = 'Pulling all...'; badge.style.color = '#00f2fe'; }
-              if (typeof ClientApp !== 'undefined' && ClientApp.showToast) ClientApp.showToast('Pulling all 44 repositories...', 'info', '⬇️');
-
-              var res = await LunoDeployEngine.fleetSync('pull');
-              if (res && res.success) {
-                if (badge) { badge.textContent = 'All up to date ✓'; badge.style.color = '#3fb950'; }
-                if (typeof ClientApp !== 'undefined') {
-                  ClientApp.showToast(`Pulled all ${res.totalRepos} repositories cleanly!`, 'success', '⬇️');
-                  await ClientApp.fetchCodebaseMetrics(currentTarget);
-                }
-              } else {
-                if (badge) { badge.textContent = 'Pull notice / conflicts'; badge.style.color = '#ff7b72'; }
-                var report = LunoDeployEngine.formatFleetReportForOutbox(res, 'Fleet Pull Report');
-                if (typeof ClientApp !== 'undefined' && ClientApp.showFeedback) {
-                  ClientApp.showFeedback(report, 'error');
-                }
-              }
-            }
-          }, '⬇️ Pull All Repos'),
-
-          el('button', {
-            style: { flex: '1 1 95px', padding: '0.35rem 0.55rem', background: '#0d2818', color: '#3fb950', border: '1px solid #238636', borderRadius: '4px', fontSize: '0.72rem', fontWeight: 'bold', cursor: 'pointer', fontFamily: 'monospace' },
-            onclick: async function() {
-              var badge = document.getElementById('home-fleet-status-badge');
-              if (badge) { badge.textContent = 'Pushing all...'; badge.style.color = '#3fb950'; }
-              if (typeof ClientApp !== 'undefined' && ClientApp.showToast) ClientApp.showToast('Staging and pushing all repositories...', 'info', '⬆️');
-
-              var res = await LunoDeployEngine.fleetSync('push');
-              if (res && res.success) {
-                if (badge) { badge.textContent = 'Pushed all ✓'; badge.style.color = '#3fb950'; }
-                if (typeof ClientApp !== 'undefined') {
-                  ClientApp.showToast(`Pushed all ${res.totalRepos} repositories to GitHub!`, 'success', '⬆️');
-                }
-              } else {
-                if (badge) { badge.textContent = 'Push failed'; badge.style.color = '#ff7b72'; }
-                if (typeof ClientApp !== 'undefined' && ClientApp.showFeedback) {
-                  ClientApp.showFeedback('❌ Fleet Push Error:\n' + (res && res.error), 'error');
-                }
-              }
-            }
-          }, '⬆️ Push All Repos'),
-
-          el('button', {
-            style: { flex: '1 1 95px', padding: '0.35rem 0.55rem', background: '#271052', color: '#d2a8ff', border: '1px solid #8257e5', borderRadius: '4px', fontSize: '0.72rem', fontWeight: 'bold', cursor: 'pointer', fontFamily: 'monospace' },
-            onclick: async function() {
-              var badge = document.getElementById('home-fleet-status-badge');
-              if (badge) { badge.textContent = 'Syncing Mac ➔ Linux...'; badge.style.color = '#d2a8ff'; }
-
-              var pushRes = await LunoDeployEngine.fleetSync('push', { commitMsg: `[Cross-Wire Sync] ${new Date().toLocaleString()}` });
-              if (!pushRes || !pushRes.success) {
-                if (badge) { badge.textContent = 'Push failed'; badge.style.color = '#ff7b72'; }
-                alert('Local push failed; aborted Linux pull: ' + (pushRes && pushRes.error));
-                return;
-              }
-
-              var pullRes = await LunoDeployEngine.fleetSync('pull', { host: '10.0.0.245' });
-              if (pullRes && pullRes.success) {
-                if (badge) { badge.textContent = 'Mac ↔ Linux Synced ✓'; badge.style.color = '#3fb950'; }
-                if (typeof ClientApp !== 'undefined' && ClientApp.showToast) {
-                  ClientApp.showToast('Cross-node sync complete: Pushed to GitHub & pulled onto Linux!', 'success', '🎉');
-                }
-              } else {
-                if (badge) { badge.textContent = 'Linux pull failed'; badge.style.color = '#ff7b72'; }
-                alert('Pushed to GitHub, but remote Linux pull failed: ' + (pullRes && pullRes.error));
-              }
-            }
-          }, '🌐 Push ➔ Linux'),
-
-          el('button', {
-            style: { padding: '0.35rem 0.55rem', background: '#161b22', color: '#c9d1d9', border: '1px solid #30363d', borderRadius: '4px', fontSize: '0.72rem', cursor: 'pointer', fontFamily: 'monospace' },
-            onclick: async function() {
-              var badge = document.getElementById('home-fleet-status-badge');
-              if (badge) { badge.textContent = 'Fetching status...'; badge.style.color = '#00f2fe'; }
-
-              var res = await LunoDeployEngine.fleetSync('status', { fetch: true });
-              if (res && res.success) {
-                var dirty = (res.results || []).filter(r => r.hasUncommitted);
-                var needPull = (res.results || []).filter(r => r.needPull || r.behind > 0);
-                var needPush = (res.results || []).filter(r => r.needPush || r.ahead > 0);
-
-                if (badge) {
-                  badge.textContent = `${dirty.length} dirty | ${needPull.length} behind | ${needPush.length} ahead`;
-                  badge.style.color = (dirty.length > 0 || needPull.length > 0) ? '#ff9800' : '#3fb950';
-                }
-
-                var report = LunoDeployEngine.formatFleetReportForOutbox(res, 'Fleet Status Report');
-                if (typeof ClientApp !== 'undefined' && ClientApp.showFeedback) {
-                  ClientApp.showFeedback(report, 'info');
-                }
-              }
-            }
-          }, '🔍 Check')
-        )
-      );
 
       var container = el('div', {
         id: 'luno-target-checkpoint-card',
@@ -750,9 +672,9 @@ class ClientAppUI {
         ),
         el('div', { style: { display: 'flex', gap: '0.45rem', flexWrap: 'wrap' } },
           btnAction,
-          btnPullSingle
+          btnPullSingle,
+          btnDirectLan
         ),
-        fleetMeshBar,
         el('div', {
           style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.4rem', paddingTop: '0.2rem', fontSize: '0.74rem' }
         },
@@ -866,6 +788,7 @@ class ClientAppUI {
         }, verText)
       );
     }
+
   static renderOutboxFirstLayout(container) {
       if (!container) return;
       var m = typeof LunoUIComponents !== 'undefined' ? LunoUIComponents.makeElement : null;
@@ -875,7 +798,6 @@ class ClientAppUI {
       container.style.maxWidth = '100%';
       var verText = (typeof LunoVersion !== 'undefined') ? LunoVersion.getBadgeText() : 'v3.8.0';
 
-      // Full-width responsive container filling the available browser width
       var mainBox = m('div', {
         style: {
           fontFamily: 'monospace',
@@ -894,7 +816,6 @@ class ClientAppUI {
       var header = (typeof LunoSpaDock !== 'undefined' && LunoSpaDock.renderHeaderNav) ? LunoSpaDock.renderHeaderNav('workspace') : m('header', {}, 'Luno Home');
       var telemetryDrawer = m('div', { id: 'luno-telemetry-drawer-container' });
 
-      // Full-width Responsive Dual-Column Row for Outbox and Inbox
       var dualHeroRow = m('div', {
         id: 'luno-hero-dual-row',
         style: {
@@ -915,6 +836,7 @@ class ClientAppUI {
       mainBox.appendChild(telemetryDrawer);
       mainBox.appendChild(ClientAppUI.renderOutputFeedbackCard(m));
       mainBox.appendChild(ClientAppUI.renderQuestionAccent(m));
+      mainBox.appendChild(ClientAppUI.renderFleetSyncCard(m));
       mainBox.appendChild(ClientAppUI.renderCheckpointButton(m));
       mainBox.appendChild(ClientAppUI.renderDevDrawer(m));
       mainBox.appendChild(ClientAppUI.renderBottomBar(m, verText));
@@ -929,7 +851,210 @@ class ClientAppUI {
           try { OutboxQueue.renderWidget(); } catch(e){}
         }
       }, 30);
-  }
+    }
+
+  static renderFleetSyncCard(m) {
+      var el = m || (typeof LunoUIComponents !== 'undefined' ? LunoUIComponents.makeElement : null);
+      var isLinux = typeof ClientApp !== 'undefined' && (ClientApp.isLinux || ClientApp.activePlatform === 'linux');
+      var thisNodeLabel = isLinux ? '🐧 Linux Laptop (10.0.0.245)' : '🍎 Mac Workstation (10.0.0.226)';
+      var peerHost = (typeof LunoDeployEngine !== 'undefined') ? LunoDeployEngine.getPeerHost() : (isLinux ? '10.0.0.226' : '10.0.0.245');
+      var peerNodeLabel = isLinux ? `🍎 Mac (${peerHost}:8080)` : `🐧 Linux (${peerHost}:8080)`;
+
+      var container = el('div', {
+        id: 'luno-home-fleet-sync-card',
+        style: {
+          background: 'linear-gradient(135deg, #0d1117 0%, #161b22 100%)',
+          border: '2px solid #238636',
+          borderRadius: '10px',
+          padding: '0.85rem',
+          marginBottom: '0.65rem',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '0.65rem',
+          boxShadow: '0 4px 14px rgba(35, 134, 54, 0.25)',
+          width: '100%',
+          boxSizing: 'border-box',
+          fontFamily: 'monospace'
+        }
+      });
+
+      var topRow = el('div', {
+        style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.4rem', borderBottom: '1px solid #21262d', paddingBottom: '0.4rem' }
+      },
+        el('div', { style: { display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' } },
+          el('strong', { style: { color: '#3fb950', fontSize: '0.92rem', display: 'flex', alignItems: 'center', gap: '0.35rem' } },
+            '🔄 UNIVERSAL FLEET SYNC HUB'
+          ),
+          el('span', {
+            id: 'fleet-home-node-pill',
+            style: { fontSize: '0.68rem', color: '#c9d1d9', background: '#21262d', border: '1px solid #30363d', padding: '0.12rem 0.45rem', borderRadius: '10px' }
+          }, `Node: ${thisNodeLabel}`),
+          el('span', {
+            id: 'fleet-home-peer-pill',
+            style: { fontSize: '0.68rem', color: '#00f2fe', background: '#003847', border: '1px solid #00f2fe', padding: '0.12rem 0.45rem', borderRadius: '10px', fontWeight: 'bold' }
+          }, `Target: ${peerNodeLabel}`)
+        ),
+        el('span', {
+          id: 'fleet-home-status-badge',
+          style: { fontSize: '0.68rem', color: '#10b981', background: 'rgba(16,185,129,0.15)', border: '1px solid #238636', padding: '0.15rem 0.5rem', borderRadius: '10px', fontWeight: 'bold' }
+        }, 'Ready')
+      );
+
+      var btnMasterSync = el('button', {
+        id: 'btn-home-fleet-master-sync',
+        style: {
+          width: '100%',
+          padding: '0.9rem',
+          background: '#238636',
+          color: '#ffffff',
+          border: 'none',
+          borderRadius: '8px',
+          fontWeight: 'bold',
+          fontSize: '1rem',
+          cursor: 'pointer',
+          fontFamily: 'monospace',
+          boxShadow: '0 4px 14px rgba(35,134,54,0.4)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: '0.5rem',
+          transition: 'all 0.15s ease'
+        }
+      }, '🚀 1-Tap Universal Fleet Sync (One-Repo Mirror)');
+
+      var subBar = el('div', {
+        style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.4rem', fontSize: '0.75rem' }
+      },
+        el('div', { style: { display: 'flex', gap: '0.35rem', flexWrap: 'wrap' } },
+          el('button', {
+            id: 'btn-home-fleet-queue-outbox',
+            style: { padding: '0.35rem 0.65rem', background: '#271052', color: '#d2a8ff', border: '1px solid #8257e5', borderRadius: '6px', fontSize: '0.72rem', fontWeight: 'bold', cursor: 'pointer', fontFamily: 'monospace' },
+            onclick: async function() {
+              if (typeof LunoDeployEngine !== 'undefined') {
+                var count = await LunoDeployEngine.queueModifiedToOutbox();
+                if (count > 0 && typeof ClientAppUI !== 'undefined') {
+                  ClientAppUI.outboxExpanded = true;
+                  var outboxContent = document.getElementById('outbox-card-content');
+                  if (outboxContent) outboxContent.style.display = 'block';
+                }
+              }
+            }
+          }, '📤 Queue All Modified to Outbox'),
+
+          el('button', {
+            id: 'btn-home-fleet-commit-all',
+            style: { padding: '0.35rem 0.65rem', background: '#161b22', color: '#3fb950', border: '1px solid #238636', borderRadius: '6px', fontSize: '0.72rem', fontWeight: 'bold', cursor: 'pointer', fontFamily: 'monospace' },
+            onclick: async function() {
+              var st = await LunoDeployEngine.getFleetStatus(false);
+              var dirty = (st && st.dirtyProjects) || [];
+              if (dirty.length === 0) return alert('No uncommitted projects to commit.');
+              var msg = prompt(`Commit message for ${dirty.length} modified project(s):`, `[Fleet Checkpoint] ${new Date().toLocaleString()}`);
+              if (msg) {
+                await LunoDeployEngine.commitSelectedProjects(dirty.map(d => d.name), msg);
+                updateHomeFleetView();
+              }
+            }
+          }, '📸 Commit All Modified'),
+
+          el('button', {
+            style: { padding: '0.35rem 0.65rem', background: '#003847', color: '#00f2fe', border: '1px solid #00f2fe66', borderRadius: '6px', fontSize: '0.72rem', fontWeight: 'bold', cursor: 'pointer', fontFamily: 'monospace' },
+            onclick: function() {
+              if (typeof LunoDeployEngine !== 'undefined') {
+                LunoDeployEngine.openFleetSyncDialog();
+              }
+            }
+          }, '🔍 Inspect Diffs & Details')
+        ),
+        el('button', {
+          style: { background: 'none', border: 'none', color: '#8b949e', cursor: 'pointer', textDecoration: 'underline', fontSize: '0.72rem' },
+          onclick: function() {
+            updateHomeFleetView(true);
+          }
+        }, '↻ Refresh Status')
+      );
+
+      var modifiedContainer = el('div', {
+        id: 'home-fleet-dirty-list',
+        style: { display: 'none', flexDirection: 'column', gap: '0.3rem', background: '#070a13', border: '1px solid #1e293b', borderRadius: '6px', padding: '0.55rem' }
+      });
+
+      btnMasterSync.onclick = async function() {
+        btnMasterSync.disabled = true;
+        btnMasterSync.textContent = '⏳ Synchronizing Fleet Across Mac & Linux...';
+        try {
+          var res = await LunoDeployEngine.syncEverything({
+            peerHost: peerHost,
+            onProgress: function(msg) {
+              btnMasterSync.textContent = msg;
+            }
+          });
+          if (res && res.success) {
+            if (typeof ClientApp !== 'undefined') {
+              ClientApp.showToast('Universal Fleet Sync complete!', 'success', '🎉');
+              if (ClientApp.showFeedback) ClientApp.showFeedback(res.summary, 'success');
+            }
+            updateHomeFleetView(false);
+          }
+        } catch(err) {
+          alert('Sync error: ' + err.message);
+        } finally {
+          btnMasterSync.disabled = false;
+          btnMasterSync.textContent = '🚀 1-Tap Universal Fleet Sync (One-Repo Mirror)';
+        }
+      };
+
+      async function updateHomeFleetView(fetchRemote = false) {
+        var badge = document.getElementById('fleet-home-status-badge');
+        if (badge) { badge.textContent = 'Scanning...'; badge.style.color = '#00f2fe'; }
+
+        var st = await LunoDeployEngine.getFleetStatus(fetchRemote);
+        var dirty = (st && st.dirtyProjects) || [];
+        var dirtyCount = dirty.length;
+
+        if (badge) {
+          if (dirtyCount > 0) {
+            badge.textContent = `${dirtyCount} project(s) modified`;
+            badge.style.color = '#ff9800';
+            badge.style.background = 'rgba(255,152,0,0.15)';
+            badge.style.borderColor = '#ff9800';
+          } else {
+            badge.textContent = 'All in Sync ✓';
+            badge.style.color = '#10b981';
+            badge.style.background = 'rgba(16,185,129,0.15)';
+            badge.style.borderColor = '#238636';
+          }
+        }
+
+        if (dirtyCount > 0) {
+          modifiedContainer.style.display = 'flex';
+          modifiedContainer.innerHTML = `<div style="font-size:0.7rem; font-weight:bold; color:#ff9800;">Modified Projects (${dirtyCount}):</div>`;
+          dirty.forEach(function(d) {
+            var filesStr = (d.uncommittedFiles || []).map(f => typeof f === 'string' ? f : f.file).slice(0, 3).join(', ');
+            if (d.uncommittedFiles && d.uncommittedFiles.length > 3) filesStr += ` (+${d.uncommittedFiles.length - 3} more)`;
+            modifiedContainer.innerHTML += `
+              <div style="display:flex; justify-content:space-between; align-items:center; font-size:0.72rem; padding:0.2rem 0; border-bottom:1px solid rgba(255,255,255,0.04);">
+                <span style="color:#00f2fe; font-weight:bold;">${d.name}</span>
+                <span style="color:#8b949e; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:240px;">${filesStr}</span>
+              </div>
+            `;
+          });
+        } else {
+          modifiedContainer.style.display = 'none';
+          modifiedContainer.innerHTML = '';
+        }
+      }
+
+      container.appendChild(topRow);
+      container.appendChild(btnMasterSync);
+      container.appendChild(subBar);
+      container.appendChild(modifiedContainer);
+
+      setTimeout(function() {
+        updateHomeFleetView(false);
+      }, 100);
+
+      return container;
+    }
 }
 
 globalThis.ClientAppUI = ClientAppUI;

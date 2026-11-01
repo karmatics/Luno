@@ -192,17 +192,20 @@ class ClientApp {
   }
 
   static async checkPing() {
-    try {
-      var data = await LunoApiClient.ping();
-      ClientApp.activeRootDir = data.rootDir || '';
+      try {
+        var data = await LunoApiClient.ping();
+        ClientApp.activeRootDir = data.rootDir || '';
+        ClientApp.activePlatform = data.platform || (navigator.userAgent.toLowerCase().includes('linux') ? 'linux' : 'darwin');
+        ClientApp.isLinux = Boolean(data.isLinux || ClientApp.activePlatform === 'linux');
+        ClientApp.isMac = Boolean(data.isMac || ClientApp.activePlatform === 'darwin');
+        ClientApp.peerHost = data.suggestedPeer || (ClientApp.isLinux ? '10.0.0.226' : '10.0.0.245');
 
-      var verBadge = document.getElementById('luno-version-tag');
-      if (verBadge) verBadge.textContent = data.version || 'v3.6.6';
-      var rootLabel = document.getElementById('active-root-label');
-      if (rootLabel) rootLabel.textContent = ClientApp.activeRootDir;
-    } catch (e) {}
-  }
-
+        var verBadge = document.getElementById('luno-version-tag');
+        if (verBadge) verBadge.textContent = data.version || 'v3.8.0';
+        var rootLabel = document.getElementById('active-root-label');
+        if (rootLabel) rootLabel.textContent = ClientApp.activeRootDir;
+      } catch (e) {}
+    }
   static showFeedback(text, type, options) {
       var feedbackType = type || 'info';
       var opts = options || {};
