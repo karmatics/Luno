@@ -416,7 +416,7 @@ class ClientAppUI {
       var btnAction = el('button', {
         id: 'btn-frontpage-checkpoint-exec',
         style: {
-          width: '100%',
+          flex: '1.4 1 200px',
           padding: '0.75rem',
           background: 'var(--accent-green, #238636)',
           color: '#ffffff',
@@ -429,11 +429,33 @@ class ClientAppUI {
           boxShadow: '0 4px 12px rgba(35, 134, 54, 0.3)',
           transition: 'all 0.15s ease'
         }
-      }, '🚀 1-Tap Checkpoint & Deploy to Pages');
+      }, '🚀 1-Tap Checkpoint & Deploy');
+
+      var btnPullSingle = el('button', {
+        id: 'btn-frontpage-pull-project',
+        style: {
+          flex: '1 1 140px',
+          padding: '0.75rem',
+          background: '#003847',
+          color: '#00f2fe',
+          border: '1px solid #00f2fe',
+          borderRadius: '6px',
+          fontWeight: 'bold',
+          fontSize: '0.82rem',
+          cursor: 'pointer',
+          fontFamily: 'monospace',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: '0.35rem',
+          transition: 'all 0.15s ease'
+        },
+        title: 'Pull latest commits from remote for [' + currentTarget + ']'
+      }, '⬇️ Pull [' + currentTarget + ']');
 
       chkDeployPages.onchange = function() {
         if (chkDeployPages.checked) {
-          btnAction.textContent = '🚀 1-Tap Checkpoint & Deploy to Pages';
+          btnAction.textContent = '🚀 1-Tap Checkpoint & Deploy';
           btnAction.style.background = 'var(--accent-green, #238636)';
           btnAction.style.boxShadow = '0 4px 12px rgba(35, 134, 54, 0.3)';
         } else {
@@ -485,6 +507,42 @@ class ClientAppUI {
         }
       };
 
+      btnPullSingle.onclick = async function() {
+        btnPullSingle.disabled = true;
+        btnPullSingle.textContent = '⏳ Pulling...';
+        try {
+          var res = await LunoDeployEngine.pullProject(currentTarget);
+          if (res && res.success) {
+            if (typeof ClientApp !== 'undefined' && ClientApp.showFeedback) {
+              ClientApp.showFeedback('⬇️ PULL RESULT [' + currentTarget + ']:\n\n' + (res.output || 'Up to date.'), 'success');
+            }
+            if (typeof ClientApp !== 'undefined' && ClientApp.showToast) {
+              ClientApp.showToast('Pulled latest updates for [' + currentTarget + ']!', 'success', '⬇️');
+              await ClientApp.fetchCodebaseMetrics(currentTarget);
+            }
+          } else {
+            var errOut = (res && (res.output || res.error)) || 'Failed to pull';
+            if (typeof ClientApp !== 'undefined' && ClientApp.showFeedback) {
+              ClientApp.showFeedback('⚠️ Pull Notice / Conflicts [' + currentTarget + ']:\n\n' + errOut, 'error');
+            }
+            if (res && res.hasConflicts && typeof OutboxQueue !== 'undefined') {
+              var conflictReport = `# MERGE CONFLICT REPORT: [${currentTarget}]\n\nOutput:\n\`\`\`\n${errOut}\n\`\`\``;
+              OutboxQueue.addBundle(`Conflict Report: ${currentTarget}`, conflictReport, { priority: 'high' });
+              if (typeof ClientApp !== 'undefined' && ClientApp.showToast) {
+                ClientApp.showToast('Merge conflicts queued to Outbox for LLM assistance!', 'info', '📤');
+              }
+            }
+          }
+        } catch(err) {
+          if (typeof ClientApp !== 'undefined' && ClientApp.showFeedback) {
+            ClientApp.showFeedback('❌ Pull Exception:\n\n' + err.message, 'error');
+          }
+        } finally {
+          btnPullSingle.disabled = false;
+          btnPullSingle.textContent = '⬇️ Pull [' + currentTarget + ']';
+        }
+      };
+
       var btnTimeline = el('button', {
         style: { background: '#271052', border: '1px solid #8257e5', color: '#d2a8ff', borderRadius: '4px', cursor: 'pointer', fontSize: '0.7rem', padding: '0.15rem 0.45rem', fontWeight: 'bold', fontFamily: 'monospace' },
         title: 'Inspect interactive undo history timeline for this project',
@@ -514,6 +572,127 @@ class ClientAppUI {
           }
         }
       }, '📜 Clone Script');
+
+      // Fleet-Wide Multi-Repo Sync Toolbar inside Checkpoint card
+      var fleetMeshBar = el('div', {
+        id: 'home-fleet-sync-strip',
+        style: {
+          background: '#0d1117',
+          border: '1px solid var(--border-color, #30363d)',
+          borderRadius: '6px',
+          padding: '0.55rem 0.75rem',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '0.45rem'
+        }
+      },
+        el('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.35rem' } },
+          el('div', { style: { display: 'flex', alignItems: 'center', gap: '0.4rem' } },
+            el('strong', { style: { color: 'var(--text-accent, #00f2fe)', fontSize: '0.78rem' } }, '🔄 FLEET GIT MESH:'),
+            el('span', { style: { color: 'var(--text-secondary, #8b949e)', fontSize: '0.7rem' } }, 'Multi-repo sync across 44 projects')
+          ),
+          el('span', { id: 'home-fleet-status-badge', style: { color: 'var(--accent-green, #3fb950)', fontSize: '0.68rem', fontWeight: 'bold' } }, 'Ready')
+        ),
+        el('div', { style: { display: 'flex', gap: '0.35rem', flexWrap: 'wrap' } },
+          el('button', {
+            style: { flex: '1 1 95px', padding: '0.35rem 0.55rem', background: '#003847', color: '#00f2fe', border: '1px solid #00f2fe66', borderRadius: '4px', fontSize: '0.72rem', fontWeight: 'bold', cursor: 'pointer', fontFamily: 'monospace' },
+            onclick: async function() {
+              var b = el;
+              var badge = document.getElementById('home-fleet-status-badge');
+              if (badge) { badge.textContent = 'Pulling all...'; badge.style.color = '#00f2fe'; }
+              if (typeof ClientApp !== 'undefined' && ClientApp.showToast) ClientApp.showToast('Pulling all 44 repositories...', 'info', '⬇️');
+
+              var res = await LunoDeployEngine.fleetSync('pull');
+              if (res && res.success) {
+                if (badge) { badge.textContent = 'All up to date ✓'; badge.style.color = '#3fb950'; }
+                if (typeof ClientApp !== 'undefined') {
+                  ClientApp.showToast(`Pulled all ${res.totalRepos} repositories cleanly!`, 'success', '⬇️');
+                  await ClientApp.fetchCodebaseMetrics(currentTarget);
+                }
+              } else {
+                if (badge) { badge.textContent = 'Pull notice / conflicts'; badge.style.color = '#ff7b72'; }
+                var report = LunoDeployEngine.formatFleetReportForOutbox(res, 'Fleet Pull Report');
+                if (typeof ClientApp !== 'undefined' && ClientApp.showFeedback) {
+                  ClientApp.showFeedback(report, 'error');
+                }
+              }
+            }
+          }, '⬇️ Pull All Repos'),
+
+          el('button', {
+            style: { flex: '1 1 95px', padding: '0.35rem 0.55rem', background: '#0d2818', color: '#3fb950', border: '1px solid #238636', borderRadius: '4px', fontSize: '0.72rem', fontWeight: 'bold', cursor: 'pointer', fontFamily: 'monospace' },
+            onclick: async function() {
+              var badge = document.getElementById('home-fleet-status-badge');
+              if (badge) { badge.textContent = 'Pushing all...'; badge.style.color = '#3fb950'; }
+              if (typeof ClientApp !== 'undefined' && ClientApp.showToast) ClientApp.showToast('Staging and pushing all repositories...', 'info', '⬆️');
+
+              var res = await LunoDeployEngine.fleetSync('push');
+              if (res && res.success) {
+                if (badge) { badge.textContent = 'Pushed all ✓'; badge.style.color = '#3fb950'; }
+                if (typeof ClientApp !== 'undefined') {
+                  ClientApp.showToast(`Pushed all ${res.totalRepos} repositories to GitHub!`, 'success', '⬆️');
+                }
+              } else {
+                if (badge) { badge.textContent = 'Push failed'; badge.style.color = '#ff7b72'; }
+                if (typeof ClientApp !== 'undefined' && ClientApp.showFeedback) {
+                  ClientApp.showFeedback('❌ Fleet Push Error:\n' + (res && res.error), 'error');
+                }
+              }
+            }
+          }, '⬆️ Push All Repos'),
+
+          el('button', {
+            style: { flex: '1 1 95px', padding: '0.35rem 0.55rem', background: '#271052', color: '#d2a8ff', border: '1px solid #8257e5', borderRadius: '4px', fontSize: '0.72rem', fontWeight: 'bold', cursor: 'pointer', fontFamily: 'monospace' },
+            onclick: async function() {
+              var badge = document.getElementById('home-fleet-status-badge');
+              if (badge) { badge.textContent = 'Syncing Mac ➔ Linux...'; badge.style.color = '#d2a8ff'; }
+
+              var pushRes = await LunoDeployEngine.fleetSync('push', { commitMsg: `[Cross-Wire Sync] ${new Date().toLocaleString()}` });
+              if (!pushRes || !pushRes.success) {
+                if (badge) { badge.textContent = 'Push failed'; badge.style.color = '#ff7b72'; }
+                alert('Local push failed; aborted Linux pull: ' + (pushRes && pushRes.error));
+                return;
+              }
+
+              var pullRes = await LunoDeployEngine.fleetSync('pull', { host: '10.0.0.245' });
+              if (pullRes && pullRes.success) {
+                if (badge) { badge.textContent = 'Mac ↔ Linux Synced ✓'; badge.style.color = '#3fb950'; }
+                if (typeof ClientApp !== 'undefined' && ClientApp.showToast) {
+                  ClientApp.showToast('Cross-node sync complete: Pushed to GitHub & pulled onto Linux!', 'success', '🎉');
+                }
+              } else {
+                if (badge) { badge.textContent = 'Linux pull failed'; badge.style.color = '#ff7b72'; }
+                alert('Pushed to GitHub, but remote Linux pull failed: ' + (pullRes && pullRes.error));
+              }
+            }
+          }, '🌐 Push ➔ Linux'),
+
+          el('button', {
+            style: { padding: '0.35rem 0.55rem', background: '#161b22', color: '#c9d1d9', border: '1px solid #30363d', borderRadius: '4px', fontSize: '0.72rem', cursor: 'pointer', fontFamily: 'monospace' },
+            onclick: async function() {
+              var badge = document.getElementById('home-fleet-status-badge');
+              if (badge) { badge.textContent = 'Fetching status...'; badge.style.color = '#00f2fe'; }
+
+              var res = await LunoDeployEngine.fleetSync('status', { fetch: true });
+              if (res && res.success) {
+                var dirty = (res.results || []).filter(r => r.hasUncommitted);
+                var needPull = (res.results || []).filter(r => r.needPull || r.behind > 0);
+                var needPush = (res.results || []).filter(r => r.needPush || r.ahead > 0);
+
+                if (badge) {
+                  badge.textContent = `${dirty.length} dirty | ${needPull.length} behind | ${needPush.length} ahead`;
+                  badge.style.color = (dirty.length > 0 || needPull.length > 0) ? '#ff9800' : '#3fb950';
+                }
+
+                var report = LunoDeployEngine.formatFleetReportForOutbox(res, 'Fleet Status Report');
+                if (typeof ClientApp !== 'undefined' && ClientApp.showFeedback) {
+                  ClientApp.showFeedback(report, 'info');
+                }
+              }
+            }
+          }, '🔍 Check')
+        )
+      );
 
       var container = el('div', {
         id: 'luno-target-checkpoint-card',
@@ -569,7 +748,11 @@ class ClientAppUI {
           chkDeployPages,
           el('span', {}, '🚀 Deploy to GitHub Pages (push remote & publish live site)')
         ),
-        btnAction,
+        el('div', { style: { display: 'flex', gap: '0.45rem', flexWrap: 'wrap' } },
+          btnAction,
+          btnPullSingle
+        ),
+        fleetMeshBar,
         el('div', {
           style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.4rem', paddingTop: '0.2rem', fontSize: '0.74rem' }
         },

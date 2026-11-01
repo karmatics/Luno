@@ -1024,176 +1024,212 @@ class LunoDeployEngine {
     }
 
   static async renderProjectDeployPanel(projectName, m, targetContainer) {
-        const el = m || ((typeof LunoUIComponents !== 'undefined' && LunoUIComponents.makeElement)
-          ? LunoUIComponents.makeElement
-          : function(tag, attrs) {
-              const node = document.createElement(tag || 'div');
-              if (attrs && typeof attrs === 'object') Object.assign(node, attrs);
-              for (let i = 2; i < arguments.length; i++) {
-                const c = arguments[i];
-                if (c) node.appendChild(typeof c === 'string' ? document.createTextNode(c) : c);
-              }
-              return node;
-            });
-
-        const pName = projectName;
-        const remoteName = LunoDeployEngine.getRemoteRepoName(pName);
-        const account = LunoDeployEngine.getGithubAccount();
-
-        const panel = targetContainer || el('div', {
-          className: 'luno-deploy-subpanel',
-          style: {
-            background: '#0d1117',
-            border: '1px solid #30363d',
-            borderRadius: '6px',
-            padding: '0.75rem',
-            marginTop: '0.5rem',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '0.5rem',
-            fontFamily: 'monospace'
-          }
-        });
-
-        panel.innerHTML = '<div style="color:#00f2fe; font-size:0.75rem;">⚡ Checking git repository status...</div>';
-
-        const gitInfo = await LunoDeployEngine.getProjectGitStatusLazy(pName);
-        panel.innerHTML = '';
-
-        const hasGit = Boolean(gitInfo && gitInfo.hasGit);
-        const remoteUrl = (gitInfo && gitInfo.remoteUrl) || ('git@github.com:' + account + '/' + remoteName + '.git');
-        const statusText = (gitInfo && gitInfo.statusText) || '';
-        const uncommitted = statusText ? statusText.split('\n').filter(Boolean).length : 0;
-
-        // Detect if repo is already created on GitHub or has remote configured
-        const hasConfiguredRemote = Boolean(gitInfo && gitInfo.remoteUrl && gitInfo.remoteUrl.trim());
-
-        const githubRepoUrl = 'https://github.com/' + account + '/' + remoteName;
-        const settingsPagesUrl = 'https://github.com/' + account + '/' + remoteName + '/settings/pages';
-        const liveUrl = 'https://' + account.toLowerCase() + '.github.io/' + remoteName + '/';
-
-        const headerRow = el('div', {
-          style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.35rem', borderBottom: '1px solid #21262d', paddingBottom: '0.4rem' }
-        },
-          el('div', { style: { display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' } },
-            el('strong', { style: { color: '#d2a8ff', fontSize: '0.8rem' } }, '🌐 GitHub Pages:'),
-            el('a', { href: liveUrl, target: '_blank', style: { color: '#58a6ff', fontSize: '0.72rem', textDecoration: 'none' } }, 'Live Site ↗'),
-            el('a', { href: githubRepoUrl, target: '_blank', style: { color: '#8b949e', fontSize: '0.72rem', textDecoration: 'none' } }, 'GitHub Repo ↗')
-          ),
-          el('span', {
-            style: {
-              fontSize: '0.68rem',
-              fontWeight: 'bold',
-              padding: '0.12rem 0.45rem',
-              borderRadius: '8px',
-              background: hasGit ? '#0d2818' : '#271052',
-              color: hasGit ? '#3fb950' : '#d2a8ff',
-              border: '1px solid ' + (hasGit ? '#238636' : '#8257e5')
+      const el = m || ((typeof LunoUIComponents !== 'undefined' && LunoUIComponents.makeElement)
+        ? LunoUIComponents.makeElement
+        : function(tag, attrs) {
+            const node = document.createElement(tag || 'div');
+            if (attrs && typeof attrs === 'object') Object.assign(node, attrs);
+            for (let i = 2; i < arguments.length; i++) {
+              const c = arguments[i];
+              if (c) node.appendChild(typeof c === 'string' ? document.createTextNode(c) : c);
             }
-          }, hasGit ? ('Git Active (' + uncommitted + ' modified)') : '🌱 Standalone Folder')
-        );
+            return node;
+          });
 
-        const remoteInput = el('input', {
-          type: 'text',
-          value: remoteUrl,
-          placeholder: 'git@github.com:' + account + '/' + remoteName + '.git',
-          style: { flex: 1, minWidth: '180px', background: '#070a13', color: '#7ee787', border: '1px solid #30363d', padding: '0.35rem 0.5rem', borderRadius: '4px', fontSize: '0.72rem', fontFamily: 'monospace', outline: 'none' }
-        });
+      const pName = projectName;
+      const remoteName = LunoDeployEngine.getRemoteRepoName(pName);
+      const account = LunoDeployEngine.getGithubAccount();
 
-        const commitInput = el('input', {
-          type: 'text',
-          value: '[' + pName + '] Checkpoint & Deploy to GitHub Pages',
-          placeholder: 'Commit message...',
-          style: { width: '100%', background: '#070a13', color: '#00f2fe', border: '1px solid #30363d', padding: '0.4rem 0.5rem', borderRadius: '4px', fontSize: '0.72rem', fontFamily: 'monospace', outline: 'none', boxSizing: 'border-box' }
-        });
+      const panel = targetContainer || el('div', {
+        className: 'luno-deploy-subpanel',
+        style: {
+          background: '#0d1117',
+          border: '1px solid #30363d',
+          borderRadius: '6px',
+          padding: '0.75rem',
+          marginTop: '0.5rem',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '0.5rem',
+          fontFamily: 'monospace'
+        }
+      });
 
-        const outputBox = el('pre', {
-          style: { display: 'none', background: '#070a13', border: '1px solid #1e293b', padding: '0.5rem', borderRadius: '4px', color: '#7ee787', fontSize: '0.7rem', fontFamily: 'monospace', whiteSpace: 'pre-wrap', margin: 0, maxHeight: '160px', overflowY: 'auto' }
-        });
+      panel.innerHTML = '<div style="color:#00f2fe; font-size:0.75rem;">⚡ Checking git repository status...</div>';
 
-        const btnDeploy = el('button', {
-          style: { flex: 1, padding: '0.5rem 0.85rem', background: '#238636', color: '#fff', border: 'none', borderRadius: '6px', fontWeight: 'bold', fontSize: '0.78rem', cursor: 'pointer', fontFamily: 'monospace', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.35rem', boxShadow: '0 2px 6px rgba(35,134,54,0.3)' },
-          onclick: async function() {
-            btnDeploy.disabled = true;
-            btnDeploy.textContent = '🚀 Deploying...';
-            outputBox.style.display = 'block';
-            outputBox.style.color = '#00f2fe';
-            outputBox.textContent = '⚡ Staging, committing, and deploying to GitHub Pages...';
+      const gitInfo = await LunoDeployEngine.getProjectGitStatusLazy(pName);
+      panel.innerHTML = '';
 
-            try {
-              const targetRemote = remoteInput.value.trim();
-              const res = await LunoDeployEngine.deployProjectToGitHub(pName, commitInput.value.trim(), targetRemote);
-              if (res && res.success) {
-                outputBox.style.color = '#7ee787';
-                outputBox.textContent = (res.output || 'Deployment pushed cleanly to GitHub!') + '\n\n🌐 Live URL: ' + liveUrl;
+      const hasGit = Boolean(gitInfo && gitInfo.hasGit);
+      const remoteUrl = (gitInfo && gitInfo.remoteUrl) || ('git@github.com:' + account + '/' + remoteName + '.git');
+      const statusText = (gitInfo && gitInfo.statusText) || '';
+      const uncommitted = statusText ? statusText.split('\n').filter(Boolean).length : 0;
+      const hasConfiguredRemote = Boolean(gitInfo && gitInfo.remoteUrl && gitInfo.remoteUrl.trim());
+
+      const githubRepoUrl = 'https://github.com/' + account + '/' + remoteName;
+      const liveUrl = 'https://' + account.toLowerCase() + '.github.io/' + remoteName + '/';
+
+      const headerRow = el('div', {
+        style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.35rem', borderBottom: '1px solid #21262d', paddingBottom: '0.4rem' }
+      },
+        el('div', { style: { display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' } },
+          el('strong', { style: { color: '#d2a8ff', fontSize: '0.8rem' } }, '🌐 GitHub Pages:'),
+          el('a', { href: liveUrl, target: '_blank', style: { color: '#58a6ff', fontSize: '0.72rem', textDecoration: 'none' } }, 'Live Site ↗'),
+          el('a', { href: githubRepoUrl, target: '_blank', style: { color: '#8b949e', fontSize: '0.72rem', textDecoration: 'none' } }, 'GitHub Repo ↗')
+        ),
+        el('span', {
+          style: {
+            fontSize: '0.68rem',
+            fontWeight: 'bold',
+            padding: '0.12rem 0.45rem',
+            borderRadius: '8px',
+            background: hasGit ? '#0d2818' : '#271052',
+            color: hasGit ? '#3fb950' : '#d2a8ff',
+            border: '1px solid ' + (hasGit ? '#238636' : '#8257e5')
+          }
+        }, hasGit ? ('Git Active (' + uncommitted + ' modified)') : '🌱 Standalone Folder')
+      );
+
+      const remoteInput = el('input', {
+        type: 'text',
+        value: remoteUrl,
+        placeholder: 'git@github.com:' + account + '/' + remoteName + '.git',
+        style: { flex: 1, minWidth: '180px', background: '#070a13', color: '#7ee787', border: '1px solid #30363d', padding: '0.35rem 0.5rem', borderRadius: '4px', fontSize: '0.72rem', fontFamily: 'monospace', outline: 'none' }
+      });
+
+      const commitInput = el('input', {
+        type: 'text',
+        value: '[' + pName + '] Checkpoint & Deploy to GitHub Pages',
+        placeholder: 'Commit message...',
+        style: { width: '100%', background: '#070a13', color: '#00f2fe', border: '1px solid #30363d', padding: '0.4rem 0.5rem', borderRadius: '4px', fontSize: '0.72rem', fontFamily: 'monospace', outline: 'none', boxSizing: 'border-box' }
+      });
+
+      const outputBox = el('pre', {
+        style: { display: 'none', background: '#070a13', border: '1px solid #1e293b', padding: '0.5rem', borderRadius: '4px', color: '#7ee787', fontSize: '0.7rem', fontFamily: 'monospace', whiteSpace: 'pre-wrap', margin: 0, maxHeight: '160px', overflowY: 'auto' }
+      });
+
+      const btnDeploy = el('button', {
+        style: { flex: 1.2, padding: '0.5rem 0.85rem', background: '#238636', color: '#fff', border: 'none', borderRadius: '6px', fontWeight: 'bold', fontSize: '0.78rem', cursor: 'pointer', fontFamily: 'monospace', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.35rem', boxShadow: '0 2px 6px rgba(35,134,54,0.3)' },
+        onclick: async function() {
+          btnDeploy.disabled = true;
+          btnDeploy.textContent = '🚀 Deploying...';
+          outputBox.style.display = 'block';
+          outputBox.style.color = '#00f2fe';
+          outputBox.textContent = '⚡ Staging, committing, and deploying to GitHub Pages...';
+
+          try {
+            const targetRemote = remoteInput.value.trim();
+            const res = await LunoDeployEngine.deployProjectToGitHub(pName, commitInput.value.trim(), targetRemote);
+            if (res && res.success) {
+              outputBox.style.color = '#7ee787';
+              outputBox.textContent = (res.output || 'Deployment pushed cleanly to GitHub!') + '\n\n🌐 Live URL: ' + liveUrl;
+              if (typeof ClientApp !== 'undefined' && ClientApp.showToast) {
+                ClientApp.showToast('Checkpoint & Deploy complete for [' + pName + ']!', 'success', '🚀');
+              }
+              LunoDeployEngine.gitStatusCache.delete(pName);
+            } else {
+              outputBox.style.color = '#ff7b72';
+              outputBox.textContent = '❌ Deployment Error:\n' + ((res && res.error) || 'Failed to deploy');
+            }
+          } catch(err) {
+            outputBox.style.color = '#ff7b72';
+            outputBox.textContent = '❌ Exception: ' + err.message;
+          } finally {
+            btnDeploy.disabled = false;
+            btnDeploy.textContent = '🚀 1-Tap Checkpoint & Deploy';
+          }
+        }
+      }, '🚀 1-Tap Checkpoint & Deploy');
+
+      const btnPull = el('button', {
+        style: { flex: 1, padding: '0.5rem 0.75rem', background: '#003847', color: '#00f2fe', border: '1px solid #00f2fe', borderRadius: '6px', fontWeight: 'bold', fontSize: '0.78rem', cursor: 'pointer', fontFamily: 'monospace', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.35rem' },
+        title: 'Pull latest commits from origin main for ' + pName,
+        onclick: async function() {
+          btnPull.disabled = true;
+          btnPull.textContent = '⏳ Pulling...';
+          outputBox.style.display = 'block';
+          outputBox.style.color = '#00f2fe';
+          outputBox.textContent = `⚡ Pulling latest updates from origin main for [${pName}]...`;
+
+          try {
+            const res = await LunoDeployEngine.pullProject(pName);
+            if (res && res.success) {
+              outputBox.style.color = '#7ee787';
+              outputBox.textContent = `✅ Pull complete for [${pName}]:\n` + (res.output || 'Up to date');
+              if (typeof ClientApp !== 'undefined' && ClientApp.showToast) {
+                ClientApp.showToast(`Pulled latest updates for [${pName}]!`, 'success', '⬇️');
+              }
+              LunoDeployEngine.gitStatusCache.delete(pName);
+            } else {
+              outputBox.style.color = '#ff7b72';
+              const conflictNote = res.hasConflicts ? '\n⚠️ MERGE CONFLICTS DETECTED in: ' + (res.conflicts || []).join(', ') : '';
+              outputBox.textContent = `❌ Pull Notice for [${pName}]:\n` + (res.error || res.output || 'Unknown error') + conflictNote;
+              if (res.hasConflicts && typeof OutboxQueue !== 'undefined') {
+                const report = `# MERGE CONFLICT REPORT: [${pName}]\nConflicts in: ${(res.conflicts || []).join(', ')}\n\nOutput:\n\`\`\`\n${res.output}\n\`\`\``;
+                OutboxQueue.addBundle(`Conflict Report: ${pName}`, report, { priority: 'high' });
                 if (typeof ClientApp !== 'undefined' && ClientApp.showToast) {
-                  ClientApp.showToast('Checkpoint & Deploy complete for [' + pName + ']!', 'success', '🚀');
+                  ClientApp.showToast('Queued Conflict Report to Outbox for LLM assistance!', 'info', '📤');
                 }
+              }
+            }
+          } catch(err) {
+            outputBox.style.color = '#ff7b72';
+            outputBox.textContent = '❌ Pull Exception: ' + err.message;
+          } finally {
+            btnPull.disabled = false;
+            btnPull.textContent = '⬇️ Pull Latest';
+          }
+        }
+      }, '⬇️ Pull Latest');
+
+      const actionButtons = [btnDeploy, btnPull];
+
+      if (!hasConfiguredRemote) {
+        const btnCreateRemote = el('button', {
+          style: { padding: '0.5rem 0.65rem', background: '#271052', color: '#d2a8ff', border: '1px solid #8257e5', borderRadius: '6px', fontSize: '0.72rem', fontWeight: 'bold', cursor: 'pointer', fontFamily: 'monospace' },
+          title: 'Auto-create initial repository on GitHub',
+          onclick: async function() {
+            btnCreateRemote.disabled = true;
+            btnCreateRemote.textContent = 'Creating...';
+            outputBox.style.display = 'block';
+
+            const token = LunoDeployEngine.getGithubToken();
+            if (token) {
+              outputBox.textContent = '⚡ Calling GitHub API to create repository [' + remoteName + '] under ' + account + '...';
+              const res = await LunoDeployEngine.createRemoteRepoOnGitHub(remoteName);
+              if (res.success) {
+                outputBox.style.color = '#7ee787';
+                outputBox.textContent = '✅ Created repository on GitHub: ' + (res.repoUrl || remoteName) + '\nReady to deploy!';
+                btnCreateRemote.style.display = 'none';
                 LunoDeployEngine.gitStatusCache.delete(pName);
               } else {
                 outputBox.style.color = '#ff7b72';
-                outputBox.textContent = '❌ Deployment Error:\n' + ((res && res.error) || 'Failed to deploy');
-              }
-            } catch(err) {
-              outputBox.style.color = '#ff7b72';
-              outputBox.textContent = '❌ Exception: ' + err.message;
-            } finally {
-              btnDeploy.disabled = false;
-              btnDeploy.textContent = '🚀 1-Tap Checkpoint & Deploy to GitHub Pages';
-            }
-          }
-        }, '🚀 1-Tap Checkpoint & Deploy to GitHub Pages');
-
-        const actionButtons = [btnDeploy];
-
-        // Only show "Create Remote on GitHub" if the repository has NOT been created / linked yet
-        if (!hasConfiguredRemote) {
-          const btnCreateRemote = el('button', {
-            style: { padding: '0.5rem 0.65rem', background: '#271052', color: '#d2a8ff', border: '1px solid #8257e5', borderRadius: '6px', fontSize: '0.72rem', fontWeight: 'bold', cursor: 'pointer', fontFamily: 'monospace' },
-            title: 'Auto-create initial repository on GitHub',
-            onclick: async function() {
-              btnCreateRemote.disabled = true;
-              btnCreateRemote.textContent = 'Creating...';
-              outputBox.style.display = 'block';
-
-              const token = LunoDeployEngine.getGithubToken();
-              if (token) {
-                outputBox.textContent = '⚡ Calling GitHub API to create repository [' + remoteName + '] under ' + account + '...';
-                const res = await LunoDeployEngine.createRemoteRepoOnGitHub(remoteName);
-                if (res.success) {
-                  outputBox.style.color = '#7ee787';
-                  outputBox.textContent = '✅ Created repository on GitHub: ' + (res.repoUrl || remoteName) + '\nReady to deploy!';
-                  btnCreateRemote.style.display = 'none';
-                  LunoDeployEngine.gitStatusCache.delete(pName);
-                } else {
-                  outputBox.style.color = '#ff7b72';
-                  outputBox.textContent = '❌ Could not create repo via API: ' + res.error;
-                  window.open('https://github.com/new?name=' + encodeURIComponent(remoteName), '_blank');
-                }
-              } else {
+                outputBox.textContent = '❌ Could not create repo via API: ' + res.error;
                 window.open('https://github.com/new?name=' + encodeURIComponent(remoteName), '_blank');
               }
-
-              btnCreateRemote.disabled = false;
-              btnCreateRemote.textContent = '✨ Create Remote on GitHub';
+            } else {
+              window.open('https://github.com/new?name=' + encodeURIComponent(remoteName), '_blank');
             }
-          }, '✨ Create Remote on GitHub');
 
-          actionButtons.push(btnCreateRemote);
-        }
+            btnCreateRemote.disabled = false;
+            btnCreateRemote.textContent = '✨ Create Remote on GitHub';
+          }
+        }, '✨ Create Remote on GitHub');
 
-        panel.appendChild(headerRow);
-        panel.appendChild(el('div', { style: { display: 'flex', gap: '0.35rem', alignItems: 'center', flexWrap: 'wrap' } },
-          el('span', { style: { fontSize: '0.7rem', color: '#8b949e', fontWeight: 'bold' } }, 'Remote:'),
-          remoteInput
-        ));
-        panel.appendChild(commitInput);
-        panel.appendChild(el('div', { style: { display: 'flex', gap: '0.35rem', flexWrap: 'wrap' } }, ...actionButtons));
-        panel.appendChild(outputBox);
-
-        return panel;
+        actionButtons.push(btnCreateRemote);
       }
 
+      panel.appendChild(headerRow);
+      panel.appendChild(el('div', { style: { display: 'flex', gap: '0.35rem', alignItems: 'center', flexWrap: 'wrap' } },
+        el('span', { style: { fontSize: '0.7rem', color: '#8b949e', fontWeight: 'bold' } }, 'Remote:'),
+        remoteInput
+      ));
+      panel.appendChild(commitInput);
+      panel.appendChild(el('div', { style: { display: 'flex', gap: '0.35rem', flexWrap: 'wrap' } }, ...actionButtons));
+      panel.appendChild(outputBox);
+
+      return panel;
+    }
   static async checkpointTargetProject(projectName, commitMsg, options) {
       var opts = options || {};
       var deployToPages = opts.deployToPages !== false;
@@ -1338,13 +1374,95 @@ class LunoDeployEngine {
           body: JSON.stringify({
             action,
             commitMsg,
-            branch: opts.branch || 'main'
+            branch: opts.branch || 'main',
+            autocommit: opts.autocommit !== false,
+            fetch: opts.fetch !== false
           })
         });
         return await res.json();
       } catch (err) {
         return { success: false, error: err.message };
       }
+    }
+  static async pullProject(projectName, options = {}) {
+      var pName = projectName || (typeof ClientApp !== 'undefined' && ClientApp.getTargetProject ? ClientApp.getTargetProject() : 'Luno');
+      var opts = options || {};
+
+      try {
+        var res = await fetch('/api/git/pull?project=' + encodeURIComponent(pName), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-Luno-Client': '1' },
+          body: JSON.stringify({
+            project: pName,
+            branch: opts.branch || 'main',
+            autocommit: opts.autocommit !== false
+          })
+        });
+        return await res.json();
+      } catch(err) {
+        return { success: false, error: err.message };
+      }
+    }
+
+  static formatFleetReportForOutbox(syncResult, title = 'Fleet Git Status & Conflict Report') {
+      if (!syncResult) return '';
+      const res = syncResult;
+      const items = res.results || [];
+      const conflicted = items.filter(r => r.hasConflicts || (r.conflicts && r.conflicts.length > 0));
+      const failed = items.filter(r => r.success === false && !r.hasConflicts);
+      const needPull = items.filter(r => r.needPull || r.behind > 0);
+      const dirty = items.filter(r => r.hasUncommitted);
+
+      let md = `# 📊 FLEET-WIDE GIT STATUS & SYNCHRONIZATION REPORT\n`;
+      md += `**Timestamp:** ${res.timestamp || new Date().toISOString()} • **Action:** ${res.action || 'status'}\n`;
+      md += `**Total Repositories:** ${res.totalRepos || items.length} | **Conflicts:** ${conflicted.length} | **Failed:** ${failed.length}\n\n`;
+      md += `---\n\n`;
+
+      if (conflicted.length > 0) {
+        md += `## ⚠️ REPOSITORIES WITH MERGE CONFLICTS (${conflicted.length}):\n`;
+        md += `The following projects require surgical merge conflict resolution:\n\n`;
+        conflicted.forEach(c => {
+          md += `### • [${c.name}] (${c.branch || 'main'})\n`;
+          md += `Conflicted Files:\n`;
+          (c.conflicts || []).forEach(f => { md += `  - \`${f}\`\n`; });
+          md += `Git Output:\n\`\`\`\n${c.output || 'Merge conflict'}\n\`\`\`\n\n`;
+        });
+        md += `---\n\n`;
+      }
+
+      if (failed.length > 0) {
+        md += `## ❌ FAILED OPERATIONS (${failed.length}):\n`;
+        failed.forEach(f => {
+          md += `- **${f.name}**: ${f.error || f.output || 'Unknown error'}\n`;
+        });
+        md += `\n---\n\n`;
+      }
+
+      if (needPull.length > 0) {
+        md += `## ⬇️ PENDING PULLS FROM REMOTE (${needPull.length}):\n`;
+        needPull.forEach(p => {
+          md += `- **${p.name}**: ${p.behind} commit(s) behind remote\n`;
+        });
+        md += `\n---\n\n`;
+      }
+
+      if (dirty.length > 0) {
+        md += `## ✏️ UNCOMMITTED LOCAL EDITS (${dirty.length}):\n`;
+        dirty.forEach(d => {
+          md += `- **${d.name}**: ${d.uncommittedLines || 1} modified file(s)\n`;
+          if (d.statusText) {
+            md += `\`\`\`\n${d.statusText}\n\`\`\`\n`;
+          }
+        });
+        md += `\n---\n\n`;
+      }
+
+      md += `## 📋 INSTRUCTIONS FOR AI RESOLUTION:\n`;
+      md += `1. Review any conflicted files listed above.\n`;
+      md += `2. For each conflict, provide clean, merged source files or surgical method patches.\n`;
+      md += `3. Return all resolutions wrapped in a single html markdown code block.\n`;
+
+      return md;
     }
 }
 

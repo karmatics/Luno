@@ -140,8 +140,7 @@ class OutboxPromptBox {
 
     if (DictationClass) {
       try {
-        dictateWidget = new DictationClass();
-        dictateWidget.init();
+        dictateWidget = new DictationClass({ compact: true });
 
         if (dictateWidget.element) {
           dictateWidget.element.style.flex = '1';
@@ -150,9 +149,6 @@ class OutboxPromptBox {
           dictateWidget.element.style.overflow = 'hidden';
           dictateWidget.element.style.border = '1px solid #8257e5';
         }
-
-        if (dictateWidget.copyButton) dictateWidget.copyButton.style.display = 'none';
-        if (dictateWidget.magicSendBtn) dictateWidget.magicSendBtn.style.display = 'none';
 
         if (textToLoad && dictateWidget.editorContent) {
           dictateWidget.editorContent.textContent = textToLoad;
@@ -192,7 +188,6 @@ class OutboxPromptBox {
     var btnRow = document.createElement('div');
     btnRow.style.cssText = 'display:flex; gap:0.4rem; flex-shrink:0; align-items:center;';
 
-    // 1. Add / Save to Outbox Button
     var btnAdd = document.createElement('button');
     btnAdd.id = 'btn-add-prompt-outbox';
     btnAdd.style.cssText = 'flex:1.4; padding:0.55rem; background:#8257e5; color:#fff; border:none; border-radius:6px; font-weight:bold; cursor:pointer; font-size:0.8rem; font-family:monospace; box-shadow:0 4px 14px rgba(130,87,229,0.4); display:flex; align-items:center; justify-content:center; gap:0.35rem;';
@@ -240,10 +235,9 @@ class OutboxPromptBox {
       }
     };
 
-    // 2. Direct Copy to Clipboard Button
     var btnCopy = document.createElement('button');
     btnCopy.id = 'btn-copy-prompt-clipboard';
-    btnCopy.style.cssText = 'flex:1.2; padding:0.55rem; background:#161b22; color:#58a6ff; border:1px solid #0088cc; border-radius:6px; font-weight:bold; cursor:pointer; font-size:0.8rem; font-family:monospace; display:flex; align-items:center; justify-content:center; gap:0.35rem;';
+    btnCopy.style.cssText = 'flex:1.1; padding:0.55rem; background:#161b22; color:#58a6ff; border:1px solid #0088cc; border-radius:6px; font-weight:bold; cursor:pointer; font-size:0.8rem; font-family:monospace; display:flex; align-items:center; justify-content:center; gap:0.35rem;';
     btnCopy.innerHTML = '<span>📋</span><span>Copy</span>';
 
     btnCopy.onclick = function() {
@@ -264,9 +258,25 @@ class OutboxPromptBox {
       }, 1500);
     };
 
-    // 3. Hide / Close Button
+    var btnClear = document.createElement('button');
+    btnClear.id = 'btn-clear-prompt-draft';
+    btnClear.style.cssText = 'flex:0.9; padding:0.55rem; background:#21262d; color:#ff7b72; border:1px solid #da3633; border-radius:6px; font-weight:bold; cursor:pointer; font-size:0.75rem; font-family:monospace; display:flex; align-items:center; justify-content:center; gap:0.25rem;';
+    btnClear.innerHTML = '<span>🧹</span><span>Clear</span>';
+    btnClear.onclick = function() {
+      if (dictateWidget) {
+        dictateWidget.clearContent();
+      }
+      if (fallbackInput) {
+        fallbackInput.value = '';
+      }
+      try { localStorage.removeItem('luno_prompt_draft_text'); } catch(e){}
+      if (typeof ClientApp !== 'undefined' && ClientApp.showToast) {
+        ClientApp.showToast('Cleared prompt text', 'info', '🧹');
+      }
+    };
+
     var btnHide = document.createElement('button');
-    btnHide.style.cssText = 'flex:0.8; padding:0.55rem; background:#21262d; color:#c9d1d9; border:1px solid #30363d; border-radius:6px; cursor:pointer; font-size:0.75rem; font-family:monospace;';
+    btnHide.style.cssText = 'flex:0.7; padding:0.55rem; background:#21262d; color:#c9d1d9; border:1px solid #30363d; border-radius:6px; cursor:pointer; font-size:0.75rem; font-family:monospace;';
     btnHide.textContent = 'Hide';
     btnHide.onclick = function() {
       if (dictateWidget) {
@@ -282,6 +292,7 @@ class OutboxPromptBox {
 
     btnRow.appendChild(btnAdd);
     btnRow.appendChild(btnCopy);
+    btnRow.appendChild(btnClear);
     btnRow.appendChild(btnHide);
 
     body.appendChild(btnRow);

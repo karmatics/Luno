@@ -76,7 +76,6 @@ class OutboxWidgetRenderer {
       var detailsPanel = document.createElement('div');
       detailsPanel.style.cssText = 'padding:0.6rem; background:#070a13; border-top:1px solid #30363d; display:flex; flex-direction:column; gap:0.45rem;';
 
-      // 1. Resolve constituent files
       var filesList = item.files;
       if (!filesList || filesList.length === 0) {
         if (typeof LunoPayloadParser !== 'undefined' && LunoPayloadParser.parse) {
@@ -111,13 +110,17 @@ class OutboxWidgetRenderer {
         filesContainer.style.cssText = 'display:flex; flex-direction:column; gap:0.25rem; max-height:220px; overflow-y:auto; padding-right:2px;';
 
         filesList.forEach(function(f) {
+          var fPath = typeof f === 'string' ? f : ((f && (f.filePath || f.path || f.name)) || 'file');
+          var fSize = typeof f === 'object' && f && f.size ? f.size : 0;
+          var fLines = typeof f === 'object' && f && f.lines ? f.lines : 1;
+
           var fRow = document.createElement('div');
           fRow.style.cssText = 'display:flex; justify-content:space-between; align-items:center; background:#11151c; border:1px solid #1e293b; border-radius:4px; padding:0.25rem 0.5rem; font-size:0.72rem; gap:0.4rem;';
 
           var fLeft = document.createElement('div');
           fLeft.style.cssText = 'display:flex; align-items:center; gap:0.35rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex:1;';
 
-          var ext = (f.filePath.split('.').pop() || '').toLowerCase();
+          var ext = (fPath.split('.').pop() || '').toLowerCase();
           var badgeColor = '#58a6ff';
           if (ext === 'js' || ext === 'mjs') badgeColor = '#f7df1e';
           else if (ext === 'html') badgeColor = '#ff7b72';
@@ -130,8 +133,8 @@ class OutboxWidgetRenderer {
 
           var nameSpan = document.createElement('span');
           nameSpan.style.cssText = 'color:#f0f6fc; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;';
-          nameSpan.textContent = f.filePath;
-          nameSpan.title = f.filePath;
+          nameSpan.textContent = fPath;
+          nameSpan.title = fPath;
 
           fLeft.appendChild(extBadge);
           fLeft.appendChild(nameSpan);
@@ -141,16 +144,16 @@ class OutboxWidgetRenderer {
 
           var sizeSpan = document.createElement('span');
           sizeSpan.style.cssText = 'color:#8b949e; font-size:0.68rem;';
-          sizeSpan.textContent = (f.lines || 1) + ' L (' + formatBytes(f.size) + ')';
+          sizeSpan.textContent = fLines + ' L' + (fSize > 0 ? (' (' + formatBytes(fSize) + ')') : '');
 
           var btnRemoveFile = document.createElement('button');
           btnRemoveFile.style.cssText = 'background:none; border:none; color:#ff7b72; cursor:pointer; font-size:0.8rem; font-weight:bold; padding:0 0.2rem; line-height:1;';
           btnRemoveFile.textContent = '✖';
-          btnRemoveFile.title = 'Remove ' + f.filePath + ' from this bundle';
+          btnRemoveFile.title = 'Remove ' + fPath + ' from this bundle';
           btnRemoveFile.onclick = function(e) {
             e.stopPropagation();
             if (targetQueue && targetQueue.removeFileFromItem) {
-              targetQueue.removeFileFromItem(item.id, f.filePath);
+              targetQueue.removeFileFromItem(item.id, fPath);
             }
           };
 
@@ -188,7 +191,7 @@ class OutboxWidgetRenderer {
 
       var btnCopySingle = document.createElement('button');
       btnCopySingle.style.cssText = 'padding:0.25rem 0.6rem; background:#271052; color:#d2a8ff; border:1px solid #8257e5; border-radius:4px; font-size:0.7rem; font-weight:bold; cursor:pointer; font-family:monospace;';
-      btnCopySingle.textContent = 'Copy Single Item';
+      btnCopySingle.textContent = '📋 Copy Single Item';
       btnCopySingle.onclick = function(e) {
         e.stopPropagation();
         if (targetQueue && targetQueue.copyPackageToClipboard) {
@@ -204,97 +207,98 @@ class OutboxWidgetRenderer {
 
     return itemWrapper;
   }
+
   static renderWidget(containerId, retryCount) {
-      var retries = retryCount || 0;
-      var targetId = containerId || 'outbox-queue-container';
-      var container = document.getElementById(targetId);
+    var retries = retryCount || 0;
+    var targetId = containerId || 'outbox-queue-container';
+    var container = document.getElementById(targetId);
 
-      if (!container) {
-        if (retries < 10) {
-          setTimeout(function() { OutboxWidgetRenderer.renderWidget(containerId, retries + 1); }, 100);
-        }
-        return;
+    if (!container) {
+      if (retries < 10) {
+        setTimeout(function() { OutboxWidgetRenderer.renderWidget(containerId, retries + 1); }, 100);
       }
-
-      try {
-        container.innerHTML = '';
-        var targetQueue = typeof OutboxQueue !== 'undefined' ? OutboxQueue : null;
-        var queue = (targetQueue && targetQueue.queue) || [];
-        var itemCount = queue.length;
-
-        var actionRow = document.createElement('div');
-        actionRow.style.cssText = 'display:flex; gap:0.4rem; margin-bottom:0.6rem; flex-wrap:wrap; width:100%;';
-
-        var bundleBtn = document.createElement('button');
-        bundleBtn.id = 'btn-bundle-code';
-        bundleBtn.style.cssText = 'flex:1; min-width:110px; padding:0.65rem; background:var(--accent-secondary, #8257e5); color:#fff; border:none; border-radius:8px; font-weight:bold; font-size:0.85rem; cursor:pointer; font-family:monospace; box-shadow:0 4px 12px rgba(130, 87, 229, 0.3);';
-        bundleBtn.textContent = '📦 Bundle Code';
-        bundleBtn.onclick = function(e) {
-          if (typeof OutboxOptionsModal !== 'undefined') {
-            OutboxOptionsModal.promptBundleOptionsModal(e.currentTarget || bundleBtn);
-          } else if (targetQueue && targetQueue.promptBundleOptionsModal) {
-            targetQueue.promptBundleOptionsModal(e.currentTarget || bundleBtn);
-          } else if (typeof ClientApp !== 'undefined' && ClientApp.bundleAllCode) {
-            ClientApp.bundleAllCode();
-          }
-        };
-
-        var writePromptBtn = document.createElement('button');
-        writePromptBtn.id = 'btn-write-prompt';
-        writePromptBtn.style.cssText = 'flex:1; min-width:110px; padding:0.65rem; background:var(--bg-secondary, #271052); color:var(--accent-secondary, #d2a8ff); border:1px solid var(--accent-secondary, #8257e5); border-radius:8px; font-size:0.85rem; font-weight:bold; cursor:pointer; font-family:monospace; box-shadow:0 4px 12px rgba(130,87,229,0.25);';
-        writePromptBtn.textContent = '✍️ Write Prompt';
-        writePromptBtn.onclick = function(e) {
-          if (typeof OutboxPromptBox !== 'undefined') {
-            OutboxPromptBox.promptWriteNoteModal('', '', e.currentTarget || writePromptBtn);
-          } else if (targetQueue && targetQueue.promptWriteNoteModal) {
-            targetQueue.promptWriteNoteModal('', '', e.currentTarget || writePromptBtn);
-          }
-        };
-
-        actionRow.appendChild(bundleBtn);
-        actionRow.appendChild(writePromptBtn);
-
-        var mainCopyBtn = document.createElement('button');
-        mainCopyBtn.id = 'btn-main-copy-outbox';
-        mainCopyBtn.style.cssText = 'width:100%; padding:0.75rem; font-weight:bold; border-radius:8px; font-size:0.9rem; cursor:pointer; font-family:monospace; margin-bottom:0.5rem; background:' + (itemCount > 0 ? 'var(--accent-secondary, #8257e5)' : 'var(--bg-secondary, #21262d)') + '; color:' + (itemCount > 0 ? '#fff' : 'var(--text-secondary, #8b949e)') + '; border:1px solid ' + (itemCount > 0 ? 'var(--accent-secondary, #8257e5)' : 'var(--border-color, #30363d)') + '; box-shadow:' + (itemCount > 0 ? '0 4px 12px rgba(130,87,229,0.35)' : 'none') + ';';
-        mainCopyBtn.textContent = itemCount > 0 ? ('📋 Copy Outbox Package (' + itemCount + ' item' + (itemCount === 1 ? '' : 's') + ')') : '📋 Copy Outbox (Empty)';
-        mainCopyBtn.onclick = function(e) {
-          if (typeof LunoAnimationEngine !== 'undefined') {
-            var outboxCard = document.querySelector('.outbox-card');
-            var btnRect = (e.currentTarget || mainCopyBtn).getBoundingClientRect();
-            LunoAnimationEngine.burstSparks(btnRect.left + (btnRect.width / 2), btnRect.top + (btnRect.height / 2), '#3fb950', 16);
-            if (outboxCard) {
-              LunoAnimationEngine.pulseTarget(outboxCard, { color: '#3fb950', glowColor: 'rgba(63, 185, 80, 0.7)' });
-              if (typeof LunoAnimationEngine.wavePulse === 'function') {
-                LunoAnimationEngine.wavePulse(outboxCard, '#3fb950');
-              }
-            }
-          }
-          if (targetQueue && targetQueue.copyPackageToClipboard) {
-            targetQueue.copyPackageToClipboard();
-          }
-        };
-
-        container.appendChild(actionRow);
-        container.appendChild(mainCopyBtn);
-
-        if (itemCount > 0) {
-          var listContainer = document.createElement('div');
-          listContainer.style.cssText = 'display:flex; flex-direction:column; gap:0.35rem; margin-top:0.5rem; width:100%;';
-          queue.forEach(function(item) {
-            if (item) {
-              var row = OutboxWidgetRenderer.renderQueueItemRow(item);
-              if (row) listContainer.appendChild(row);
-            }
-          });
-          container.appendChild(listContainer);
-        }
-      } catch (err) {
-        container.innerHTML = '<div style="color:#ff7b72; background:#220000; border:1px solid #ff3333; padding:10px; font-family:monospace; font-size:12px;">' +
-          '<strong>Outbox Widget Exception:</strong><br>' + (err.stack || err.message || String(err)) +
-          '</div>';
-      }
+      return;
     }
+
+    try {
+      container.innerHTML = '';
+      var targetQueue = typeof OutboxQueue !== 'undefined' ? OutboxQueue : null;
+      var queue = (targetQueue && targetQueue.queue) || [];
+      var itemCount = queue.length;
+
+      var actionRow = document.createElement('div');
+      actionRow.style.cssText = 'display:flex; gap:0.4rem; margin-bottom:0.6rem; flex-wrap:wrap; width:100%;';
+
+      var bundleBtn = document.createElement('button');
+      bundleBtn.id = 'btn-bundle-code';
+      bundleBtn.style.cssText = 'flex:1; min-width:110px; padding:0.65rem; background:var(--accent-secondary, #8257e5); color:#fff; border:none; border-radius:8px; font-weight:bold; font-size:0.85rem; cursor:pointer; font-family:monospace; box-shadow:0 4px 12px rgba(130, 87, 229, 0.3);';
+      bundleBtn.textContent = '📦 Bundle Code';
+      bundleBtn.onclick = function(e) {
+        if (typeof OutboxOptionsModal !== 'undefined') {
+          OutboxOptionsModal.promptBundleOptionsModal(e.currentTarget || bundleBtn);
+        } else if (targetQueue && targetQueue.promptBundleOptionsModal) {
+          targetQueue.promptBundleOptionsModal(e.currentTarget || bundleBtn);
+        } else if (typeof ClientApp !== 'undefined' && ClientApp.bundleAllCode) {
+          ClientApp.bundleAllCode();
+        }
+      };
+
+      var writePromptBtn = document.createElement('button');
+      writePromptBtn.id = 'btn-write-prompt';
+      writePromptBtn.style.cssText = 'flex:1; min-width:110px; padding:0.65rem; background:var(--bg-secondary, #271052); color:var(--accent-secondary, #d2a8ff); border:1px solid var(--accent-secondary, #8257e5); border-radius:8px; font-size:0.85rem; font-weight:bold; cursor:pointer; font-family:monospace; box-shadow:0 4px 12px rgba(130,87,229,0.25);';
+      writePromptBtn.textContent = '✍️ Write Prompt';
+      writePromptBtn.onclick = function(e) {
+        if (typeof OutboxPromptBox !== 'undefined') {
+          OutboxPromptBox.promptWriteNoteModal('', '', e.currentTarget || writePromptBtn);
+        } else if (targetQueue && targetQueue.promptWriteNoteModal) {
+          targetQueue.promptWriteNoteModal('', '', e.currentTarget || writePromptBtn);
+        }
+      };
+
+      actionRow.appendChild(bundleBtn);
+      actionRow.appendChild(writePromptBtn);
+
+      var mainCopyBtn = document.createElement('button');
+      mainCopyBtn.id = 'btn-main-copy-outbox';
+      mainCopyBtn.style.cssText = 'width:100%; padding:0.75rem; font-weight:bold; border-radius:8px; font-size:0.9rem; cursor:pointer; font-family:monospace; margin-bottom:0.5rem; background:' + (itemCount > 0 ? 'var(--accent-secondary, #8257e5)' : 'var(--bg-secondary, #21262d)') + '; color:' + (itemCount > 0 ? '#fff' : 'var(--text-secondary, #8b949e)') + '; border:1px solid ' + (itemCount > 0 ? 'var(--accent-secondary, #8257e5)' : 'var(--border-color, #30363d)') + '; box-shadow:' + (itemCount > 0 ? '0 4px 12px rgba(130,87,229,0.35)' : 'none') + ';';
+      mainCopyBtn.textContent = itemCount > 0 ? ('📋 Copy Outbox Package (' + itemCount + ' item' + (itemCount === 1 ? '' : 's') + ')') : '📋 Copy Outbox (Empty)';
+      mainCopyBtn.onclick = function(e) {
+        if (typeof LunoAnimationEngine !== 'undefined') {
+          var outboxCard = document.querySelector('.outbox-card');
+          var btnRect = (e.currentTarget || mainCopyBtn).getBoundingClientRect();
+          LunoAnimationEngine.burstSparks(btnRect.left + (btnRect.width / 2), btnRect.top + (btnRect.height / 2), '#3fb950', 16);
+          if (outboxCard) {
+            LunoAnimationEngine.pulseTarget(outboxCard, { color: '#3fb950', glowColor: 'rgba(63, 185, 80, 0.7)' });
+            if (typeof LunoAnimationEngine.wavePulse === 'function') {
+              LunoAnimationEngine.wavePulse(outboxCard, '#3fb950');
+            }
+          }
+        }
+        if (targetQueue && targetQueue.copyPackageToClipboard) {
+          targetQueue.copyPackageToClipboard('all');
+        }
+      };
+
+      container.appendChild(actionRow);
+      container.appendChild(mainCopyBtn);
+
+      if (itemCount > 0) {
+        var listContainer = document.createElement('div');
+        listContainer.style.cssText = 'display:flex; flex-direction:column; gap:0.35rem; margin-top:0.5rem; width:100%;';
+        queue.forEach(function(item) {
+          if (item) {
+            var row = OutboxWidgetRenderer.renderQueueItemRow(item);
+            if (row) listContainer.appendChild(row);
+          }
+        });
+        container.appendChild(listContainer);
+      }
+    } catch (err) {
+      container.innerHTML = '<div style="color:#ff7b72; background:#220000; border:1px solid #ff3333; padding:10px; font-family:monospace; font-size:12px;">' +
+        '<strong>Outbox Widget Exception:</strong><br>' + (err.stack || err.message || String(err)) +
+        '</div>';
+    }
+  }
 }
 
 if (typeof OutboxQueue !== 'undefined') {

@@ -310,89 +310,97 @@ class LunoServer {
 
       return path.resolve(targetDir, normalized);
     }
-  static async parseAndSaveFiles(bodyText, projectOverride) {
-    let filesToWrite = [];
-    let serverScript = "";
-    let projectName = projectOverride || "";
 
-    try {
-      const parsed = JSON.parse(bodyText);
-      if (parsed && typeof parsed === "object") {
-        if (Array.isArray(parsed.files)) filesToWrite = parsed.files;
-        if (typeof parsed.serverScript === "string") serverScript = parsed.serverScript;
-        if (!projectName && typeof parsed.project === "string") projectName = parsed.project;
+  static async parseAndSaveFiles(bodyText, projectOverride) {
+      let filesToWrite = [];
+      let serverScript = "";
+      let projectName = projectOverride || "";
+
+      try {
+        const parsed = JSON.parse(bodyText);
+        if (parsed && typeof parsed === "object") {
+          if (Array.isArray(parsed.files)) filesToWrite = parsed.files;
+          if (typeof parsed.serverScript === "string") serverScript = parsed.serverScript;
+          if (!projectName && typeof parsed.project === "string") projectName = parsed.project;
+        }
+      } catch (e) {
+        return {
+          success: false,
+          error: "Invalid JSON payload sent to server.",
+          llmFeedback: "❌ SAVE FAILED: Server expected structured JSON payload from browser client."
+        };
       }
-    } catch (e) {
+
+      const savedFiles = [];
+      let modifiedCount = 0;
+      const fileDetails = [];
+      const baseDir = LunoServer.resolveProjectBaseDir(projectName);
+
+      for (const f of filesToWrite) {
+        const filePath = f.filePath || f.relPath;
+        if (!filePath) continue;
+
+        const action = (f.action || 'write').toLowerCase();
+        let canonicalPath = filePath.replace(/\\/g, '/').replace(/^\/+/, '');
+        if (canonicalPath.startsWith('Luno Workspace/')) canonicalPath = canonicalPath.slice(15).trim();
+
+        if (f.methodSpec || action === 'patch' || action === 'delete') {
+          throw new Error(
+            '[LunoServer Guard] Unresolved surgical patch received for "' + canonicalPath + '". ' +
+            'Server-side patch consolidation is permanently disabled. ' +
+            'All AST patching must resolve client-side in the browser via LunoManifestDecisionEngine before saving.'
+          );
+        }
+
+        const fullPath = LunoServer.sanitizeAndResolvePath(canonicalPath, baseDir);
+        if (fullPath && LunoServer.isWritableWorkspacePath(fullPath)) {
+          fs.mkdirSync(path.dirname(fullPath), { recursive: true });
+          fs.writeFileSync(fullPath, f.content !== undefined ? f.content : "", "utf8");
+          savedFiles.push(canonicalPath);
+          modifiedCount++;
+          fileDetails.push("  • " + canonicalPath + " [Direct disk write]");
+        }
+      }
+
+      let serverExecutionFeedback = "";
+      let serverExecutionResult = null;
+      if (serverScript && serverScript.trim()) {
+        const execResult = await LunoServer.executeServerScript(serverScript, baseDir);
+        serverExecutionFeedback = (execResult && execResult.feedback) || "";
+        serverExecutionResult = (execResult && execResult.result) || null;
+      }
+
+      if (modifiedCount > 0) {
+        LunoServer.updateLunoMetadata(savedFiles, modifiedCount, baseDir);
+      }
+
+      LunoServer.ensureGitignoreDefaults();
+
+      let summaryText = "";
+      if (savedFiles.length === 0 && !serverScript) {
+        summaryText = "⚠️ No file targets or server scripts found in JSON payload.";
+      } else if (savedFiles.length === 0 && serverScript) {
+        summaryText = "⚡ Server Script Executed (0 file write targets).";
+      } else {
+        const modWord = modifiedCount === 1 ? "1 file processed" : (modifiedCount + " files processed");
+        const targetLabel = projectName ? (" [Target: " + projectName + "]") : "";
+        summaryText = "✅ " + modWord + targetLabel + ":\n" + fileDetails.join("\n");
+      }
+
+      const combinedFeedback = serverExecutionFeedback
+        ? (serverExecutionFeedback.trim() + "\n\n" + summaryText).trim()
+        : summaryText;
+
       return {
-        success: false,
-        error: "Invalid JSON payload sent to server.",
-        llmFeedback: "❌ SAVE FAILED: Server expected structured JSON payload from browser client."
+        success: true,
+        count: savedFiles.length,
+        modifiedCount,
+        files: savedFiles,
+        project: projectName || path.basename(baseDir),
+        serverResult: serverExecutionResult,
+        llmFeedback: combinedFeedback
       };
     }
-
-    const savedFiles = [];
-    let modifiedCount = 0;
-    const fileDetails = [];
-    const baseDir = LunoServer.resolveProjectBaseDir(projectName);
-
-    for (const f of filesToWrite) {
-      const filePath = f.filePath || f.relPath;
-      if (!filePath) continue;
-
-      const action = (f.action || 'write').toLowerCase();
-      let canonicalPath = filePath.replace(/\\/g, '/').replace(/^\/+/, '');
-      if (canonicalPath.startsWith('Luno Workspace/')) canonicalPath = canonicalPath.slice(15).trim();
-
-      if (f.methodSpec || action === 'patch' || action === 'delete') {
-        throw new Error(
-          '[LunoServer Guard] Unresolved surgical patch received for "' + canonicalPath + '". ' +
-          'Server-side patch consolidation is permanently disabled. ' +
-          'All AST patching must resolve client-side in the browser via LunoManifestDecisionEngine before saving.'
-        );
-      }
-
-      const fullPath = LunoServer.sanitizeAndResolvePath(canonicalPath, baseDir);
-      if (fullPath && LunoServer.isWritableWorkspacePath(fullPath)) {
-        fs.mkdirSync(path.dirname(fullPath), { recursive: true });
-        fs.writeFileSync(fullPath, f.content !== undefined ? f.content : "", "utf8");
-        savedFiles.push(canonicalPath);
-        modifiedCount++;
-        fileDetails.push("  • " + canonicalPath + " [Direct disk write]");
-      }
-    }
-
-    let serverExecutionFeedback = "";
-    if (serverScript && serverScript.trim()) {
-      serverExecutionFeedback = await LunoServer.executeServerScript(serverScript, baseDir);
-    }
-
-    if (modifiedCount > 0) {
-      LunoServer.updateLunoMetadata(savedFiles, modifiedCount, baseDir);
-    }
-
-    LunoServer.ensureGitignoreDefaults();
-
-    let summaryText = "";
-    if (savedFiles.length === 0 && !serverScript) {
-      summaryText = "⚠️ No file targets or server scripts found in JSON payload.";
-    } else if (savedFiles.length === 0 && serverScript) {
-      summaryText = "⚡ Server Script Executed (0 file write targets).";
-    } else {
-      const modWord = modifiedCount === 1 ? "1 file processed" : (modifiedCount + " files processed");
-      const targetLabel = projectName ? (" [Target: " + projectName + "]") : "";
-      summaryText = "✅ " + modWord + targetLabel + ":\n" + fileDetails.join("\n");
-    }
-
-    return {
-      success: true,
-      count: savedFiles.length,
-      modifiedCount,
-      files: savedFiles,
-      project: projectName || path.basename(baseDir),
-      llmFeedback: (serverExecutionFeedback + "\n" + summaryText).trim()
-    };
-  }
-
   static updateLunoMetadata(savedFiles, modifiedCount, baseDir) {
     try {
       const targetDir = baseDir || LunoServer.getRootDir();
@@ -1075,6 +1083,11 @@ class LunoServer {
           return LunoServer.handleGitCommitDetails(req, res, url);
         }
 
+        // Single project Git pull
+        if (method === 'POST' && url.pathname === '/api/git/pull') {
+          return LunoServer.handleGitPull(req, res, url);
+        }
+
         // Fleet-wide multi-repo Git operations
         if (method === 'POST' && (url.pathname === '/api/git/fleet-sync' || url.pathname === '/api/deploy/all')) {
           return LunoServer.handleFleetSync(req, res, url);
@@ -1631,6 +1644,8 @@ static serveIndex(req, res) {
           const action = (parsed.action || (url && url.searchParams && url.searchParams.get('action')) || 'status').toLowerCase();
           const commitMsg = parsed.commitMsg || `[Fleet Sync] ${new Date().toLocaleString()}`;
           const branch = parsed.branch || 'main';
+          const autocommit = parsed.autocommit !== false;
+          const doFetch = parsed.fetch !== false;
           const webRoot = LunoServer.getWebRootDir();
 
           if (!fs.existsSync(webRoot)) {
@@ -1638,129 +1653,249 @@ static serveIndex(req, res) {
           }
 
           const items = fs.readdirSync(webRoot);
-          const results = [];
           const ignored = ['node_modules', '.git', 'dist', 'build', '.checkpoints', '_claude_salvage', 'archive', 'temp', 'logs'];
+          const validRepos = [];
 
           for (const item of items) {
             if (item.startsWith('.') || item.startsWith('_') || ignored.includes(item.toLowerCase())) continue;
             const projDir = path.join(webRoot, item);
             try {
-              const stat = fs.statSync(projDir);
-              if (!stat.isDirectory()) continue;
+              if (fs.statSync(projDir).isDirectory() && fs.existsSync(path.join(projDir, '.git'))) {
+                validRepos.push(item);
+              }
+            } catch (e) {}
+          }
 
-              const gitDir = path.join(projDir, '.git');
-              if (!fs.existsSync(gitDir)) continue;
+          const { exec } = require('child_process');
+          const pExec = (cmd, opts) => new Promise((resolve) => {
+            exec(cmd, opts, (err, stdout, stderr) => {
+              resolve({ ok: !err, error: err, stdout: stdout || '', stderr: stderr || '' });
+            });
+          });
 
+          // Process repositories in concurrent batches of 8 for high speed
+          const results = [];
+          const BATCH_SIZE = 8;
+
+          for (let i = 0; i < validRepos.length; i += BATCH_SIZE) {
+            const batch = validRepos.slice(i, i + BATCH_SIZE);
+            const batchPromises = batch.map(async (item) => {
+              const projDir = path.join(webRoot, item);
               const envOpts = {
                 cwd: projDir,
                 encoding: 'utf8',
-                timeout: 15000,
-                env: Object.assign({}, process.env, {
-                  GIT_SSH_COMMAND: 'ssh -o StrictHostKeyChecking=accept-new'
-                })
+                timeout: 20000,
+                env: Object.assign({}, process.env, { GIT_SSH_COMMAND: 'ssh -o StrictHostKeyChecking=accept-new' })
               };
 
-              let remoteUrl = '';
-              try {
-                remoteUrl = execSync('git remote get-url origin', envOpts).trim();
-              } catch (e) {}
-
-              if (!remoteUrl) {
-                results.push({ name: item, status: 'no-remote', message: 'No git remote configured' });
-                continue;
+              const lockFile = path.join(projDir, '.git', 'index.lock');
+              if (fs.existsSync(lockFile)) {
+                try { fs.unlinkSync(lockFile); } catch (e) {}
               }
 
-              if (action === 'status') {
-                let statusText = '';
-                let currentBranch = 'main';
-                try {
-                  statusText = execSync('git status --short', envOpts).trim();
-                  currentBranch = execSync('git branch --show-current', envOpts).trim() || 'main';
-                } catch (e) {}
+              const remRes = await pExec('git remote get-url origin', envOpts);
+              const remoteUrl = remRes.stdout.trim();
+              if (!remoteUrl) {
+                return { name: item, status: 'no-remote', message: 'No git remote configured' };
+              }
 
-                results.push({
+              const brRes = await pExec('git branch --show-current', envOpts);
+              const currentBranch = brRes.stdout.trim() || 'main';
+
+              if (action === 'status') {
+                const stRes = await pExec('git status --short', envOpts);
+                const statusText = stRes.stdout.trim();
+
+                let behindCount = 0;
+                let aheadCount = 0;
+
+                if (doFetch) {
+                  await pExec(`git fetch -q origin ${currentBranch}`, { ...envOpts, timeout: 6000 });
+                  const behindRes = await pExec(`git rev-list --count HEAD..origin/${currentBranch}`, envOpts);
+                  const aheadRes = await pExec(`git rev-list --count origin/${currentBranch}..HEAD`, envOpts);
+                  behindCount = parseInt(behindRes.stdout.trim() || '0', 10);
+                  aheadCount = parseInt(aheadRes.stdout.trim() || '0', 10);
+                }
+
+                return {
                   name: item,
                   branch: currentBranch,
                   remoteUrl,
                   hasUncommitted: statusText.length > 0,
                   uncommittedLines: statusText ? statusText.split('\n').length : 0,
+                  behind: behindCount,
+                  ahead: aheadCount,
+                  needPull: behindCount > 0,
+                  needPush: aheadCount > 0 || statusText.length > 0,
                   statusText
-                });
+                };
               } else if (action === 'pull') {
-                let pullOut = '';
-                let success = true;
-                try {
-                  pullOut = execSync(`git pull origin ${branch} 2>&1`, envOpts).trim();
-                } catch (pullErr) {
-                  success = false;
-                  pullOut = ((pullErr.stdout || '') + (pullErr.stderr || pullErr.message || '')).trim();
+                let autocommitted = false;
+                const stRes = await pExec('git status --short', envOpts);
+                const statusText = stRes.stdout.trim();
+
+                if (statusText && autocommit) {
+                  await pExec('git add -A', envOpts);
+                  await pExec(`git commit -m "[Auto-Snapshot before Fleet Pull] ${new Date().toLocaleString()}"`, envOpts);
+                  autocommitted = true;
                 }
-                results.push({
+
+                const pullRes = await pExec(`git pull origin ${branch}`, envOpts);
+                const unmergedRes = await pExec('git diff --name-only --diff-filter=U', envOpts);
+                const conflicts = unmergedRes.stdout.trim() ? unmergedRes.stdout.trim().split('\n').filter(Boolean) : [];
+
+                return {
                   name: item,
                   action: 'pull',
-                  success,
-                  output: pullOut || 'Already up to date.'
-                });
+                  success: pullRes.ok && conflicts.length === 0,
+                  autocommitted,
+                  hasConflicts: conflicts.length > 0,
+                  conflicts,
+                  output: (pullRes.stdout || pullRes.stderr).trim() || 'Already up to date.'
+                };
               } else if (action === 'push') {
-                let pushOut = '';
-                let success = true;
                 let changesCommitted = false;
+                const stRes = await pExec('git status --short', envOpts);
+                const statusText = stRes.stdout.trim();
 
-                let statusText = '';
-                try { statusText = execSync('git status --short', envOpts).trim(); } catch (e) {}
-
-                try {
-                  const nj = path.join(projDir, '.nojekyll');
-                  if (!fs.existsSync(nj)) fs.writeFileSync(nj, '', 'utf8');
-                } catch (e) {}
+                const nj = path.join(projDir, '.nojekyll');
+                if (!fs.existsSync(nj)) {
+                  try { fs.writeFileSync(nj, '', 'utf8'); } catch (e) {}
+                }
 
                 if (statusText) {
+                  await pExec('git add -A', envOpts);
+                  await pExec(`git commit -m "${commitMsg.replace(/"/g, '\\"')}"`, envOpts);
+                  changesCommitted = true;
+                }
+
+                const pushRes = await pExec(`git push origin ${branch}`, envOpts);
+
+                const lj = path.join(projDir, 'luno.json');
+                if (fs.existsSync(lj)) {
                   try {
-                    execSync('git add -A', envOpts);
-                    execSync(`git commit -m "${commitMsg.replace(/"/g, '\\"')}"`, envOpts);
-                    changesCommitted = true;
-                  } catch (cErr) {}
-                }
-
-                try {
-                  pushOut = execSync(`git push origin ${branch} 2>&1`, envOpts).trim();
-                } catch (pErr) {
-                  success = false;
-                  pushOut = ((pErr.stdout || '') + (pErr.stderr || pErr.message || '')).trim();
-                }
-
-                try {
-                  const lj = path.join(projDir, 'luno.json');
-                  if (fs.existsSync(lj)) {
                     const meta = JSON.parse(fs.readFileSync(lj, 'utf8'));
                     meta.processedCountSinceCheckpoint = 0;
                     meta.lastCheckpointTime = new Date().toISOString();
                     meta.pendingCheckpointDescription = 'Clean working tree';
                     fs.writeFileSync(lj, JSON.stringify(meta, null, 2), 'utf8');
-                  }
-                } catch (e) {}
+                  } catch (e) {}
+                }
 
-                results.push({
+                return {
                   name: item,
                   action: 'push',
-                  success,
+                  success: pushRes.ok,
                   changesCommitted,
-                  output: pushOut || 'Everything up-to-date'
-                });
+                  output: (pushRes.stdout || pushRes.stderr).trim() || 'Everything up-to-date'
+                };
               }
-            } catch (itemErr) {
-              results.push({ name: item, success: false, error: itemErr.message });
-            }
+            });
+
+            const batchResults = await Promise.all(batchPromises);
+            results.push(...batchResults);
           }
 
+          const conflictCount = results.filter(r => r && r.hasConflicts).length;
+          const failedCount = results.filter(r => r && r.success === false).length;
+
           return LunoServer.sendJSON(res, 200, {
-            success: true,
+            success: failedCount === 0 && conflictCount === 0,
             action,
             timestamp: new Date().toISOString(),
             totalRepos: results.length,
+            hasConflicts: conflictCount > 0,
+            conflictCount,
+            failedCount,
             results
           });
         } catch (err) {
+          return LunoServer.sendJSON(res, 500, { success: false, error: err.message });
+        }
+      });
+    }
+  static handleGitPull(req, res, url) {
+      let body = '';
+      req.on('data', chunk => { body += chunk; });
+      req.on('end', () => {
+        try {
+          let parsed = {};
+          try { parsed = JSON.parse(body || '{}'); } catch(e) {}
+          const targetProj = parsed.project || (url && url.searchParams && url.searchParams.get('project')) || 'Luno';
+          const branch = parsed.branch || 'main';
+          const autocommit = parsed.autocommit !== false;
+          const baseDir = LunoServer.resolveProjectBaseDir(targetProj);
+
+          if (!fs.existsSync(baseDir)) {
+            return LunoServer.sendJSON(res, 404, { success: false, error: 'Project directory not found: ' + baseDir });
+          }
+
+          const gitDir = path.join(baseDir, '.git');
+          if (!fs.existsSync(gitDir)) {
+            return LunoServer.sendJSON(res, 400, { success: false, error: 'Not a git repository: ' + targetProj });
+          }
+
+          const lockFile = path.join(gitDir, 'index.lock');
+          if (fs.existsSync(lockFile)) {
+            try { fs.unlinkSync(lockFile); } catch(e) {}
+          }
+
+          const envOpts = {
+            cwd: baseDir,
+            encoding: 'utf8',
+            timeout: 25000,
+            env: Object.assign({}, process.env, {
+              GIT_SSH_COMMAND: 'ssh -o StrictHostKeyChecking=accept-new'
+            })
+          };
+
+          let output = '';
+          let autocommitted = false;
+          let statusText = '';
+          try { statusText = execSync('git status --short', envOpts).trim(); } catch(e) {}
+
+          // Safe auto-snapshot to protect local work from git merge block
+          if (statusText && autocommit) {
+            output += `ℹ️ Local uncommitted modifications detected in [${targetProj}]. Creating local safety snapshot...\n`;
+            try {
+              execSync('git add -A', envOpts);
+              execSync(`git commit -m "[Auto-Snapshot before Pull] ${new Date().toLocaleString()}"`, envOpts);
+              output += `✓ Saved local snapshot.\n`;
+              autocommitted = true;
+            } catch(cErr) {
+              output += `⚠️ Snapshot notice: ${cErr.message}\n`;
+            }
+          }
+
+          output += `$ git pull origin ${branch}\n`;
+          let pullSuccess = true;
+          try {
+            const pullRes = execSync(`git pull origin ${branch} 2>&1`, envOpts);
+            output += (pullRes.trim() || 'Already up to date.') + '\n';
+          } catch(pullErr) {
+            pullSuccess = false;
+            output += ((pullErr.stdout || '') + (pullErr.stderr || pullErr.message || '')).trim() + '\n';
+          }
+
+          let conflicts = [];
+          try {
+            const unmerged = execSync('git diff --name-only --diff-filter=U 2>/dev/null', envOpts).trim();
+            if (unmerged) conflicts = unmerged.split('\n').filter(Boolean);
+          } catch(e) {}
+
+          let postStatus = '';
+          try { postStatus = execSync('git status --short', envOpts).trim(); } catch(e) {}
+
+          return LunoServer.sendJSON(res, 200, {
+            success: pullSuccess && conflicts.length === 0,
+            project: targetProj,
+            autocommitted,
+            hasConflicts: conflicts.length > 0,
+            conflicts,
+            output: output.trim(),
+            statusText: postStatus
+          });
+        } catch(err) {
           return LunoServer.sendJSON(res, 500, { success: false, error: err.message });
         }
       });

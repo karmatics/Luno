@@ -310,6 +310,10 @@ class LunoPromptInstructions {
 
     container.appendChild(masterCard);
   }
+
+  static getSystemInstructions(flavorOverride) {
+      return LunoPromptInstructions.assembleFullInstructions(flavorOverride);
+    }
 }
 
 globalThis.LunoPromptInstructions = LunoPromptInstructions;
