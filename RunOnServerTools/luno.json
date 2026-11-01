@@ -1,0 +1,25 @@
+{
+  "name": "RunOnServerTools",
+  "version": "1.0.0",
+  "description": "Server-side Node.js execution sandbox and terminal command launcher. Bypasses web UI to run privileged server tasks via RUN: SERVER containers.",
+  "type": "luno-web-app",
+  "mainClass": "RunOnServerTools",
+  "entrypoint": {
+    "file": "js/RunOnServerTools.js",
+    "class": "RunOnServerTools",
+    "method": "run"
+  },
+  "main": [
+    "js/RunOnServerTools.js"
+  ],
+  "library": [
+    "DomBasics.js",
+    "UITools.js"
+  ],
+  "styles": [
+    "css/basicsWithDialogBox.css"
+  ],
+  "processedCountSinceCheckpoint": 11,
+  "lastCheckpointTime": "2026-10-23T13:05:00.000Z",
+  "pendingCheckpointDescription": "Synchronized Git identity and pulled core sibling projects from Mac Mini over LAN"
+}
