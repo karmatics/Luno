@@ -1959,6 +1959,73 @@ class LunoDeployEngine {
 
       loadData(false);
     }
+
+  static async packageConflictForAI(projectName) {
+      var pName = projectName || (typeof ClientApp !== 'undefined' && ClientApp.getTargetProject ? ClientApp.getTargetProject() : 'Luno');
+      try {
+        var res = await fetch('/api/git/conflicts?project=' + encodeURIComponent(pName));
+        var data = await res.json();
+        var conflictFiles = (data && data.conflictFiles) || [];
+
+        if (conflictFiles.length === 0) {
+          if (typeof ClientApp !== 'undefined' && ClientApp.showToast) {
+            ClientApp.showToast('No active merge conflicts detected in [' + pName + ']!', 'info', '✓');
+          }
+          return false;
+        }
+
+        var fileBlocks = [];
+        for (var f of conflictFiles) {
+          try {
+            var fData = await LunoApiClient.fetchFsRead(f, pName);
+            var tag = f.endsWith('.html') ? 'template' : (f.endsWith('.css') ? 'style' : 'script');
+            fileBlocks.push(`<${tag} data-file="${pName}/${f}">\n${fData.content || ''}\n</${tag}>`);
+          } catch(e) {}
+        }
+
+        var promptHeader = [
+          `================================================================================`,
+          `🚨 GIT MERGE CONFLICT RESOLUTION REQUEST: [${pName}]`,
+          `================================================================================`,
+          `The repository [${pName}] has an unmerged conflict across ${conflictFiles.length} file(s):`,
+          ...conflictFiles.map(f => `  • ${f}`),
+          ``,
+          `Below are the complete files containing standard Git conflict markers (<<<<<<< HEAD ... ======= ... >>>>>>>).`,
+          ``,
+          `🎯 INSTRUCTIONS FOR AI RESOLUTION:`,
+          `1. Carefully inspect both conflicting sides in each file.`,
+          `2. Merge the intended logic from both branches cleanly, removing all <<<<<<<, =======, and >>>>>>> markers.`,
+          `3. Return the clean, complete merged files wrapped in a single html code block so Luno can overwrite and resolve the conflict.`,
+          `================================================================================\n`
+        ].join('\n');
+
+        var fullPayload = promptHeader + '```html\n' + fileBlocks.join('\n\n') + '\n```';
+
+        if (typeof OutboxQueue !== 'undefined') {
+          OutboxQueue.addBundle(`🚨 Conflict Resolution: ${pName} (${conflictFiles.length} files)`, fullPayload, {
+            priority: 'high',
+            type: 'conflict',
+            files: conflictFiles,
+            meta: { project: pName, category: 'conflict-resolution' }
+          });
+
+          if (typeof ClientApp !== 'undefined') {
+            ClientApp.showToast(`🚨 Packaged ${conflictFiles.length} conflicted file(s) into Outbox!`, 'info', '📤');
+            if (typeof ClientAppUI !== 'undefined') {
+              ClientAppUI.outboxExpanded = true;
+              var outboxContent = document.getElementById('outbox-card-content');
+              if (outboxContent) outboxContent.style.display = 'block';
+            }
+          }
+        }
+        return true;
+      } catch(err) {
+        if (typeof ClientApp !== 'undefined' && ClientApp.showToast) {
+          ClientApp.showToast('Error packaging conflict: ' + err.message, 'error', '❌');
+        }
+        return false;
+      }
+    }
 }
 
 globalThis.LunoDeployEngine = LunoDeployEngine;

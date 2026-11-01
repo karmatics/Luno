@@ -289,6 +289,25 @@ class ClientAppPaster {
             await ClientApp.fetchCodebaseMetrics(targetProj);
           }
 
+          // Automatic Git Conflict Closure: If this project had an active merge conflict, auto-commit resolution
+          if (targetProj && typeof fetch !== 'undefined') {
+            fetch('/api/git/conflicts?project=' + encodeURIComponent(targetProj))
+              .then(r => r.json())
+              .then(cData => {
+                if (cData && cData.hasConflicts) {
+                  fetch('/api/git/resolve-conflict', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ project: targetProj })
+                  }).then(r => r.json()).then(res => {
+                    if (res && res.success && targetApp && targetApp.showToast) {
+                      targetApp.showToast(`🎉 Closed and committed Git conflict for [${targetProj}]!`, 'success', '✓');
+                    }
+                  }).catch(()=>{});
+                }
+              }).catch(()=>{});
+          }
+
           if (targetApp && targetApp.showToast) {
             var toastDiff = calculatedFileDiffs.length > 0 ? (' (+' + totalAdd + '/-' + totalRem + ' LOC)') : '';
             var actionLabel = finalPayload.serverScript ? 'Executed server script' : 'Saved ' + (data.modifiedCount || data.count || 0) + ' file(s)';

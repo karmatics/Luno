@@ -977,7 +977,6 @@ class LunoServer {
           }
         }
 
-        // Enhanced LAN Info with deterministic peer target resolution
         if (method === 'GET' && url.pathname === '/api/lan-info') {
           const os = require('os');
           const nets = os.networkInterfaces();
@@ -989,7 +988,7 @@ class LunoServer {
               }
             }
           }
-          const platform = os.platform(); // 'darwin' or 'linux'
+          const platform = os.platform();
           const isMac = platform === 'darwin';
           const isLinux = platform === 'linux';
           const suggestedPeer = isMac ? '10.0.0.245' : '10.0.0.226';
@@ -1009,7 +1008,6 @@ class LunoServer {
           });
         }
 
-        // Universal Fleet Manifest for fast direct 50-project diffing
         if (method === 'GET' && url.pathname === '/api/fleet/manifest') {
           const items = fs.readdirSync(webRoot);
           const manifest = {};
@@ -1126,6 +1124,15 @@ class LunoServer {
 
         if (method === 'GET' && url.pathname === '/api/git/commit') {
           return LunoServer.handleGitCommitDetails(req, res, url);
+        }
+
+        // Conflict detection and resolution endpoints
+        if (method === 'GET' && url.pathname === '/api/git/conflicts') {
+          return LunoServer.handleGitConflicts(req, res, url);
+        }
+
+        if (method === 'POST' && url.pathname === '/api/git/resolve-conflict') {
+          return LunoServer.handleGitResolveConflict(req, res, url);
         }
 
         if (method === 'POST' && url.pathname === '/api/git/pull') {
@@ -1966,6 +1973,56 @@ static serveIndex(req, res) {
           });
         } catch(err) {
           return LunoServer.sendJSON(res, 500, { success: false, error: err.message });
+        }
+      });
+    }
+
+  static handleGitConflicts(req, res, url) {
+      const targetProj = url.searchParams.get('project') || 'Luno';
+      const baseDir = LunoServer.resolveProjectBaseDir(targetProj);
+      const envOpts = { cwd: baseDir, encoding: 'utf8', timeout: 10000 };
+
+      try {
+        const { execSync } = require('child_process');
+        const unmerged = execSync('git diff --name-only --diff-filter=U 2>/dev/null', envOpts).trim();
+        const files = unmerged ? unmerged.split('\n').filter(Boolean) : [];
+        let diff = '';
+        if (files.length > 0) {
+          diff = execSync('git diff 2>/dev/null', envOpts).trim();
+        }
+        return LunoServer.sendJSON(res, 200, {
+          success: true,
+          project: targetProj,
+          hasConflicts: files.length > 0,
+          conflictFiles: files,
+          diffText: diff
+        });
+      } catch (e) {
+        return LunoServer.sendJSON(res, 200, { success: false, error: e.message, hasConflicts: false });
+      }
+    }
+
+  static handleGitResolveConflict(req, res, url) {
+      let body = '';
+      req.on('data', c => { body += c; });
+      req.on('end', () => {
+        try {
+          const { execSync } = require('child_process');
+          const parsed = JSON.parse(body || '{}');
+          const targetProj = parsed.project || (url && url.searchParams && url.searchParams.get('project')) || 'Luno';
+          const baseDir = LunoServer.resolveProjectBaseDir(targetProj);
+          const envOpts = { cwd: baseDir, encoding: 'utf8', timeout: 15000 };
+
+          execSync('git add -A', envOpts);
+          const commitOut = execSync('git commit -m "[AI Resolved Conflict] ' + new Date().toLocaleString() + '" 2>&1', envOpts).trim();
+
+          return LunoServer.sendJSON(res, 200, {
+            success: true,
+            project: targetProj,
+            output: commitOut
+          });
+        } catch (e) {
+          return LunoServer.sendJSON(res, 500, { success: false, error: e.message });
         }
       });
     }
