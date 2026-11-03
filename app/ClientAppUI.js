@@ -379,330 +379,334 @@ class ClientAppUI {
   }
 
   static renderCheckpointButton(m) {
-      var el = m || (typeof LunoUIComponents !== 'undefined' ? LunoUIComponents.makeElement : null);
-      var currentTarget = (typeof ClientApp !== 'undefined' && ClientApp.getTargetProject) ? ClientApp.getTargetProject() : 'Luno';
-      var uncommitted = (typeof ClientApp !== 'undefined' && ClientApp.uncommittedCount) ? ClientApp.uncommittedCount : 0;
+        var el = m || (typeof LunoUIComponents !== 'undefined' ? LunoUIComponents.makeElement : null);
+        var currentTarget = (typeof ClientApp !== 'undefined' && ClientApp.getTargetProject) ? ClientApp.getTargetProject() : 'Luno';
+        var uncommitted = (typeof ClientApp !== 'undefined' && ClientApp.uncommittedCount) ? ClientApp.uncommittedCount : 0;
 
-      var account = (typeof LunoDeployEngine !== 'undefined' && LunoDeployEngine.getGithubAccount) ? LunoDeployEngine.getGithubAccount() : 'karmatics';
-      var remoteName = (typeof LunoDeployEngine !== 'undefined') ? LunoDeployEngine.getRemoteRepoName(currentTarget) : currentTarget;
-      var liveUrl = 'https://' + account.toLowerCase() + '.github.io/' + remoteName + '/';
-      var localUrl = (currentTarget === 'Luno') ? '/' : ('/' + encodeURIComponent(currentTarget) + '/');
+        var isLinux = typeof ClientApp !== 'undefined' && (ClientApp.isLinux || ClientApp.activePlatform === 'linux');
+        var peerHost = (typeof LunoDeployEngine !== 'undefined') ? LunoDeployEngine.getPeerHost() : (isLinux ? '10.0.0.226' : '10.0.0.245');
+        var peerLabel = isLinux ? 'Mac' : 'Linux';
 
-      var noteInput = el('input', {
-        id: 'frontpage-checkpoint-note',
-        type: 'text',
-        placeholder: '[' + currentTarget + '] Commit message...',
-        style: {
-          width: '100%',
-          padding: '0.55rem 0.75rem',
-          background: 'var(--bg-input, #0d1117)',
-          color: 'var(--text-accent, #00f2fe)',
-          border: '1px solid var(--border-color, #30363d)',
-          borderRadius: '6px',
-          fontFamily: 'monospace',
-          fontSize: '0.78rem',
-          outline: 'none',
-          boxSizing: 'border-box'
-        }
-      });
+        var account = (typeof LunoDeployEngine !== 'undefined' && LunoDeployEngine.getGithubAccount) ? LunoDeployEngine.getGithubAccount() : 'karmatics';
+        var remoteName = (typeof LunoDeployEngine !== 'undefined') ? LunoDeployEngine.getRemoteRepoName(currentTarget) : currentTarget;
+        var liveUrl = 'https://' + account.toLowerCase() + '.github.io/' + remoteName + '/';
+        var localUrl = (currentTarget === 'Luno') ? '/' : ('/' + encodeURIComponent(currentTarget) + '/');
 
-      var chkDeployPages = el('input', {
-        id: 'frontpage-chk-deploy-pages',
-        type: 'checkbox',
-        checked: true,
-        style: { width: '15px', height: '15px', cursor: 'pointer', accentColor: 'var(--accent-green, #238636)' }
-      });
-
-      var btnAction = el('button', {
-        id: 'btn-frontpage-checkpoint-exec',
-        style: {
-          flex: '1.4 1 180px',
-          padding: '0.75rem',
-          background: 'var(--accent-green, #238636)',
-          color: '#ffffff',
-          border: 'none',
-          borderRadius: '6px',
-          fontWeight: 'bold',
-          fontSize: '0.88rem',
-          cursor: 'pointer',
-          fontFamily: 'monospace',
-          boxShadow: '0 4px 12px rgba(35, 134, 54, 0.3)',
-          transition: 'all 0.15s ease'
-        }
-      }, '🚀 1-Tap Checkpoint & Deploy');
-
-      var btnPullSingle = el('button', {
-        id: 'btn-frontpage-pull-project',
-        style: {
-          flex: '1 1 120px',
-          padding: '0.75rem',
-          background: '#003847',
-          color: '#00f2fe',
-          border: '1px solid #00f2fe',
-          borderRadius: '6px',
-          fontWeight: 'bold',
-          fontSize: '0.82rem',
-          cursor: 'pointer',
-          fontFamily: 'monospace',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          gap: '0.35rem',
-          transition: 'all 0.15s ease'
-        },
-        title: 'Pull latest commits from remote for [' + currentTarget + ']'
-      }, '⬇️ Pull [' + currentTarget + ']');
-
-      var btnDirectLan = el('button', {
-        id: 'btn-direct-lan-sync-linux',
-        style: {
-          flex: '1 1 140px',
-          padding: '0.75rem',
-          background: '#271052',
-          color: '#d2a8ff',
-          border: '1px solid #8257e5',
-          borderRadius: '6px',
-          fontWeight: 'bold',
-          fontSize: '0.82rem',
-          cursor: 'pointer',
-          fontFamily: 'monospace',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          gap: '0.35rem',
-          boxShadow: '0 4px 12px rgba(130,87,229,0.3)',
-          transition: 'all 0.15s ease'
-        },
-        title: 'Push files directly to Linux node over LAN HTTP Port 8080 (No Git/SSH needed)'
-      }, '⚡ Direct LAN Sync ➔ Linux');
-
-      btnDirectLan.onclick = async function() {
-        btnDirectLan.disabled = true;
-        btnDirectLan.textContent = '⏳ Streaming to Linux...';
-        if (typeof ClientApp !== 'undefined' && ClientApp.showToast) {
-          ClientApp.showToast(`Streaming [${currentTarget}] directly to Linux over Port 8080...`, 'info', '⚡');
-        }
-
-        try {
-          var res = await LunoDeployEngine.directLanSync('10.0.0.245', { project: currentTarget });
-          if (res && res.success) {
-            if (typeof ClientApp !== 'undefined') {
-              ClientApp.showToast(`Direct LAN Sync Complete! Wrote ${res.count} files to Linux SSD.`, 'success', '🎉');
-              if (ClientApp.showFeedback) {
-                ClientApp.showFeedback(`⚡ DIRECT LAN SYNC RESULT [${currentTarget}]:\n\nStreamed ${res.count} file(s) directly to http://10.0.0.245:8080/api/save.\nZero Git/SSH required. Files are live on the Linux machine!`, 'success');
-              }
-            }
-          } else {
-            alert('Direct LAN Sync error: ' + (res && (res.error || JSON.stringify(res))));
+        var noteInput = el('input', {
+          id: 'frontpage-checkpoint-note',
+          type: 'text',
+          placeholder: '[' + currentTarget + '] Commit message...',
+          style: {
+            width: '100%',
+            padding: '0.55rem 0.75rem',
+            background: 'var(--bg-input, #0d1117)',
+            color: 'var(--text-accent, #00f2fe)',
+            border: '1px solid var(--border-color, #30363d)',
+            borderRadius: '6px',
+            fontFamily: 'monospace',
+            fontSize: '0.78rem',
+            outline: 'none',
+            boxSizing: 'border-box'
           }
-        } catch(err) {
-          alert('Direct LAN Sync exception: ' + err.message);
-        } finally {
-          btnDirectLan.disabled = false;
-          btnDirectLan.textContent = '⚡ Direct LAN Sync ➔ Linux';
-        }
-      };
+        });
 
-      chkDeployPages.onchange = function() {
-        if (chkDeployPages.checked) {
-          btnAction.textContent = '🚀 1-Tap Checkpoint & Deploy';
-          btnAction.style.background = 'var(--accent-green, #238636)';
-          btnAction.style.boxShadow = '0 4px 12px rgba(35, 134, 54, 0.3)';
-        } else {
-          btnAction.textContent = '📸 Save Local Git Snapshot Only';
-          btnAction.style.background = 'var(--bg-secondary, #21262d)';
-          btnAction.style.boxShadow = 'none';
-        }
-      };
+        var chkDeployPages = el('input', {
+          id: 'frontpage-chk-deploy-pages',
+          type: 'checkbox',
+          checked: true,
+          style: { width: '15px', height: '15px', cursor: 'pointer', accentColor: 'var(--accent-green, #238636)' }
+        });
 
-      btnAction.onclick = async function() {
-        btnAction.disabled = true;
-        var isDeploy = chkDeployPages.checked;
-        btnAction.textContent = isDeploy ? '🚀 Deploying...' : '📸 Saving Snapshot...';
-
-        if (typeof LunoAnimationEngine !== 'undefined') {
-          var rect = btnAction.getBoundingClientRect();
-          LunoAnimationEngine.burstSparks(rect.left + (rect.width / 2), rect.top + (rect.height / 2), isDeploy ? '#3fb950' : '#00f2fe', 14);
-        }
-
-        var note = noteInput.value.trim();
-        var msg = note || ('[' + currentTarget + '] Checkpoint ' + new Date().toLocaleString());
-
-        try {
-          var res = await LunoDeployEngine.checkpointTargetProject(currentTarget, msg, { deployToPages: isDeploy });
-          if (res && res.success) {
-            var outText = res.output || (isDeploy ? 'Deployed to GitHub Pages!' : 'Saved local git snapshot.');
-            if (typeof ClientApp !== 'undefined' && ClientApp.showFeedback) {
-              ClientApp.showFeedback('📊 CHECKPOINT & DEPLOY RESULT [' + currentTarget + ']:\n\n' + outText, 'success');
-            }
-            if (typeof ClientApp !== 'undefined' && ClientApp.showToast) {
-              ClientApp.showToast(isDeploy ? 'Deployed [' + currentTarget + '] to GitHub Pages!' : 'Recorded snapshot for [' + currentTarget + ']!', 'success', '📸');
-              ClientApp.uncommittedCount = 0;
-              await ClientApp.fetchCodebaseMetrics(currentTarget);
-            }
-            noteInput.value = '';
-          } else {
-            var errText = (res && res.error) || 'Failed to checkpoint target';
-            if (typeof ClientApp !== 'undefined' && ClientApp.showFeedback) {
-              ClientApp.showFeedback('❌ Checkpoint Error:\n\n' + errText, 'error');
-            }
+        var btnAction = el('button', {
+          id: 'btn-frontpage-checkpoint-exec',
+          style: {
+            flex: '1.4 1 180px',
+            padding: '0.75rem',
+            background: 'var(--accent-green, #238636)',
+            color: '#ffffff',
+            border: 'none',
+            borderRadius: '6px',
+            fontWeight: 'bold',
+            fontSize: '0.88rem',
+            cursor: 'pointer',
+            fontFamily: 'monospace',
+            boxShadow: '0 4px 12px rgba(35, 134, 54, 0.3)',
+            transition: 'all 0.15s ease'
           }
-        } catch(err) {
-          if (typeof ClientApp !== 'undefined' && ClientApp.showFeedback) {
-            ClientApp.showFeedback('❌ Checkpoint Exception:\n\n' + err.message, 'error');
-          }
-        } finally {
-          btnAction.disabled = false;
-          chkDeployPages.onchange();
-        }
-      };
+        }, '🚀 1-Tap Checkpoint & Deploy');
 
-      btnPullSingle.onclick = async function() {
-        btnPullSingle.disabled = true;
-        btnPullSingle.textContent = '⏳ Pulling...';
-        try {
-          var res = await LunoDeployEngine.pullProject(currentTarget);
-          if (res && res.success) {
-            if (typeof ClientApp !== 'undefined' && ClientApp.showFeedback) {
-              ClientApp.showFeedback('⬇️ PULL RESULT [' + currentTarget + ']:\n\n' + (res.output || 'Up to date.'), 'success');
-            }
-            if (typeof ClientApp !== 'undefined' && ClientApp.showToast) {
-              ClientApp.showToast('Pulled latest updates for [' + currentTarget + ']!', 'success', '⬇️');
-              await ClientApp.fetchCodebaseMetrics(currentTarget);
-            }
-          } else {
-            var errOut = (res && (res.output || res.error)) || 'Failed to pull';
-            if (typeof ClientApp !== 'undefined' && ClientApp.showFeedback) {
-              ClientApp.showFeedback('⚠️ Pull Notice / Conflicts [' + currentTarget + ']:\n\n' + errOut, 'error');
-            }
-          }
-        } catch(err) {
-          if (typeof ClientApp !== 'undefined' && ClientApp.showFeedback) {
-            ClientApp.showFeedback('❌ Pull Exception:\n\n' + err.message, 'error');
-          }
-        } finally {
-          btnPullSingle.disabled = false;
-          btnPullSingle.textContent = '⬇️ Pull [' + currentTarget + ']';
-        }
-      };
+        var btnPullSingle = el('button', {
+          id: 'btn-frontpage-pull-project',
+          style: {
+            flex: '1 1 120px',
+            padding: '0.75rem',
+            background: '#003847',
+            color: '#00f2fe',
+            border: '1px solid #00f2fe',
+            borderRadius: '6px',
+            fontWeight: 'bold',
+            fontSize: '0.82rem',
+            cursor: 'pointer',
+            fontFamily: 'monospace',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '0.35rem',
+            transition: 'all 0.15s ease'
+          },
+          title: 'Pull latest commits from remote for [' + currentTarget + ']'
+        }, '⬇️ Pull [' + currentTarget + ']');
 
-      var btnTimeline = el('button', {
-        style: { background: '#271052', border: '1px solid #8257e5', color: '#d2a8ff', borderRadius: '4px', cursor: 'pointer', fontSize: '0.7rem', padding: '0.15rem 0.45rem', fontWeight: 'bold', fontFamily: 'monospace' },
-        title: 'Inspect interactive undo history timeline for this project',
-        onclick: function() {
-          if (typeof LunoTimelineDialog !== 'undefined') {
-            LunoTimelineDialog.open({ project: currentTarget });
-          }
-        }
-      }, '⏳ History');
+        var btnDirectLan = el('button', {
+          id: 'btn-direct-lan-sync-peer',
+          style: {
+            flex: '1 1 140px',
+            padding: '0.75rem',
+            background: '#271052',
+            color: '#d2a8ff',
+            border: '1px solid #8257e5',
+            borderRadius: '6px',
+            fontWeight: 'bold',
+            fontSize: '0.82rem',
+            cursor: 'pointer',
+            fontFamily: 'monospace',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '0.35rem',
+            boxShadow: '0 4px 12px rgba(130,87,229,0.3)',
+            transition: 'all 0.15s ease'
+          },
+          title: `Push files directly to ${peerLabel} node (${peerHost}:8080) over LAN HTTP (No Git/SSH needed)`
+        }, `⚡ Push ➔ ${peerLabel} (${peerHost})`);
 
-      var btnBackupAll = el('button', {
-        style: { background: '#271052', border: '1px solid #8257e5', color: '#f7df1e', borderRadius: '4px', cursor: 'pointer', fontSize: '0.7rem', padding: '0.15rem 0.45rem', fontWeight: 'bold', fontFamily: 'monospace' },
-        title: 'Download complete backup of all projects in a single ZIP file',
-        onclick: function() {
-          if (typeof LunoZipExporter !== 'undefined') {
-            LunoZipExporter.downloadAllProjectsAsZip();
+        btnDirectLan.onclick = async function() {
+          btnDirectLan.disabled = true;
+          btnDirectLan.textContent = `⏳ Streaming to ${peerLabel}...`;
+          if (typeof ClientApp !== 'undefined' && ClientApp.showToast) {
+            ClientApp.showToast(`Streaming [${currentTarget}] to ${peerLabel} (${peerHost}:8080)...`, 'info', '⚡');
           }
-        }
-      }, '📦 Backup All (.ZIP)');
 
-      var btnCloneScript = el('button', {
-        style: { background: '#161b22', border: '1px solid #30363d', color: '#58a6ff', borderRadius: '4px', cursor: 'pointer', fontSize: '0.7rem', padding: '0.15rem 0.45rem', fontWeight: 'bold', fontFamily: 'monospace' },
-        title: 'Download shell script to clone/pull all repositories on another machine',
-        onclick: function() {
-          if (typeof LunoZipExporter !== 'undefined') {
-            LunoZipExporter.downloadCloneScript();
-          }
-        }
-      }, '📜 Clone Script');
-
-      var container = el('div', {
-        id: 'luno-target-checkpoint-card',
-        style: {
-          background: 'var(--bg-card, #161b22)',
-          border: '1px solid var(--border-color, #30363d)',
-          borderRadius: '10px',
-          padding: '0.85rem',
-          margin: '0.3rem auto 0.5rem auto',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: '0.6rem',
-          width: '100%',
-          boxSizing: 'border-box',
-          boxShadow: 'var(--card-shadow, 0 4px 14px rgba(0,0,0,0.3))'
-        }
-      },
-        el('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.4rem', borderBottom: '1px solid var(--border-color, #21262d)', paddingBottom: '0.4rem' } },
-          el('div', { style: { display: 'flex', alignItems: 'center', gap: '0.4rem' } },
-            el('strong', { style: { color: 'var(--text-accent, #00f2fe)', fontSize: '0.9rem' } }, '📸 CHECKPOINT & DEPLOY:'),
-            el('span', { style: { color: 'var(--accent-green, #3fb950)', fontWeight: 'bold', fontSize: '0.85rem' } }, currentTarget)
-          ),
-          el('div', { style: { display: 'flex', gap: '0.4rem', alignItems: 'center', flexWrap: 'wrap' } },
-            btnTimeline,
-            btnBackupAll,
-            btnCloneScript,
-            el('button', {
-              style: { background: '#271052', border: '1px solid #8257e5', color: '#d2a8ff', borderRadius: '4px', cursor: 'pointer', fontSize: '0.7rem', padding: '0.15rem 0.45rem', fontWeight: 'bold', fontFamily: 'monospace' },
-              title: 'Update GitHub Personal Access Token (PAT)',
-              onclick: function() {
-                var curr = (typeof LunoDeployEngine !== 'undefined') ? LunoDeployEngine.getGithubToken() : '';
-                var val = prompt('Paste your GitHub Personal Access Token (PAT with "repo" scope):', curr);
-                if (val !== null) {
-                  if (typeof LunoDeployEngine !== 'undefined') {
-                    LunoDeployEngine.setGithubToken(val.trim());
-                  }
-                  if (typeof ClientApp !== 'undefined' && ClientApp.showToast) {
-                    ClientApp.showToast('Updated GitHub PAT token in storage!', 'success', '🔑');
-                  }
+          try {
+            var res = await LunoDeployEngine.directLanSync(peerHost, { project: currentTarget });
+            if (res && res.success) {
+              if (typeof ClientApp !== 'undefined') {
+                ClientApp.showToast(`LAN Sync Complete! Wrote ${res.count} files to ${peerLabel} SSD.`, 'success', '🎉');
+                if (ClientApp.showFeedback) {
+                  ClientApp.showFeedback(`⚡ DIRECT LAN SYNC RESULT [${currentTarget}]:\n\nStreamed ${res.count} file(s) directly to http://${peerHost}:8080/api/save.\nZero Git/SSH required. Files are live on ${peerLabel}!`, 'success');
                 }
               }
-            }, '🔑 Token'),
-            el('span', {
-              id: 'checkpoint-btn-subtitle',
-              style: { fontSize: '0.72rem', color: uncommitted > 0 ? '#ff9800' : 'var(--text-secondary, #8b949e)', fontWeight: 'bold' }
-            }, uncommitted + ' uncommitted file' + (uncommitted === 1 ? '' : 's'))
-          )
-        ),
-        noteInput,
-        el('label', {
-          style: { display: 'flex', alignItems: 'center', gap: '0.45rem', fontSize: '0.75rem', color: 'var(--text-primary, #c9d1d9)', cursor: 'pointer', userSelect: 'none' }
-        },
-          chkDeployPages,
-          el('span', {}, '🚀 Deploy to GitHub Pages (push remote & publish live site)')
-        ),
-        el('div', { style: { display: 'flex', gap: '0.45rem', flexWrap: 'wrap' } },
-          btnAction,
-          btnPullSingle,
-          btnDirectLan
-        ),
-        el('div', {
-          style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.4rem', paddingTop: '0.2rem', fontSize: '0.74rem' }
-        },
-          el('div', { style: { display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' } },
-            el('a', {
-              href: liveUrl,
-              target: '_blank',
-              title: liveUrl,
-              style: { color: 'var(--text-accent, #58a6ff)', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '0.25rem', fontWeight: 'bold' }
-            }, '🌐 Live Pages Site ↗'),
-            el('a', {
-              href: localUrl,
-              target: '_blank',
-              title: 'Open local URL in standalone window',
-              style: { color: 'var(--accent-green, #7ee787)', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '0.25rem', fontWeight: 'bold' }
-            }, '🖥️ Standalone Tab ↗')
-          ),
-          el('button', {
-            style: { background: 'none', border: 'none', color: 'var(--text-secondary, #8b949e)', cursor: 'pointer', fontSize: '0.72rem', fontFamily: 'monospace', textDecoration: 'underline' },
-            onclick: function() {
-              if (typeof LunoSpaDock !== 'undefined') LunoSpaDock.mountView('deploy');
+            } else {
+              alert(`Direct LAN Sync error: ` + (res && (res.error || JSON.stringify(res))));
             }
-          }, 'Open Deploy Hub ▾')
-        )
-      );
+          } catch(err) {
+            alert(`Direct LAN Sync exception: ` + err.message);
+          } finally {
+            btnDirectLan.disabled = false;
+            btnDirectLan.textContent = `⚡ Push ➔ ${peerLabel} (${peerHost})`;
+          }
+        };
 
-      return container;
-    }
+        chkDeployPages.onchange = function() {
+          if (chkDeployPages.checked) {
+            btnAction.textContent = '🚀 1-Tap Checkpoint & Deploy';
+            btnAction.style.background = 'var(--accent-green, #238636)';
+            btnAction.style.boxShadow = '0 4px 12px rgba(35, 134, 54, 0.3)';
+          } else {
+            btnAction.textContent = '📸 Save Local Git Snapshot Only';
+            btnAction.style.background = 'var(--bg-secondary, #21262d)';
+            btnAction.style.boxShadow = 'none';
+          }
+        };
+
+        btnAction.onclick = async function() {
+          btnAction.disabled = true;
+          var isDeploy = chkDeployPages.checked;
+          btnAction.textContent = isDeploy ? '🚀 Deploying...' : '📸 Saving Snapshot...';
+
+          if (typeof LunoAnimationEngine !== 'undefined') {
+            var rect = btnAction.getBoundingClientRect();
+            LunoAnimationEngine.burstSparks(rect.left + (rect.width / 2), rect.top + (rect.height / 2), isDeploy ? '#3fb950' : '#00f2fe', 14);
+          }
+
+          var note = noteInput.value.trim();
+          var msg = note || ('[' + currentTarget + '] Checkpoint ' + new Date().toLocaleString());
+
+          try {
+            var res = await LunoDeployEngine.checkpointTargetProject(currentTarget, msg, { deployToPages: isDeploy });
+            if (res && res.success) {
+              var outText = res.output || (isDeploy ? 'Deployed to GitHub Pages!' : 'Saved local git snapshot.');
+              if (typeof ClientApp !== 'undefined' && ClientApp.showFeedback) {
+                ClientApp.showFeedback('📊 CHECKPOINT & DEPLOY RESULT [' + currentTarget + ']:\n\n' + outText, 'success');
+              }
+              if (typeof ClientApp !== 'undefined' && ClientApp.showToast) {
+                ClientApp.showToast(isDeploy ? 'Deployed [' + currentTarget + '] to GitHub Pages!' : 'Recorded snapshot for [' + currentTarget + ']!', 'success', '📸');
+                ClientApp.uncommittedCount = 0;
+                await ClientApp.fetchCodebaseMetrics(currentTarget);
+              }
+              noteInput.value = '';
+            } else {
+              var errText = (res && res.error) || 'Failed to checkpoint target';
+              if (typeof ClientApp !== 'undefined' && ClientApp.showFeedback) {
+                ClientApp.showFeedback('❌ Checkpoint Error:\n\n' + errText, 'error');
+              }
+            }
+          } catch(err) {
+            if (typeof ClientApp !== 'undefined' && ClientApp.showFeedback) {
+              ClientApp.showFeedback('❌ Checkpoint Exception:\n\n' + err.message, 'error');
+            }
+          } finally {
+            btnAction.disabled = false;
+            chkDeployPages.onchange();
+          }
+        };
+
+        btnPullSingle.onclick = async function() {
+          btnPullSingle.disabled = true;
+          btnPullSingle.textContent = '⏳ Pulling...';
+          try {
+            var res = await LunoDeployEngine.pullProject(currentTarget);
+            if (res && res.success) {
+              if (typeof ClientApp !== 'undefined' && ClientApp.showFeedback) {
+                ClientApp.showFeedback('⬇️ PULL RESULT [' + currentTarget + ']:\n\n' + (res.output || 'Up to date.'), 'success');
+              }
+              if (typeof ClientApp !== 'undefined' && ClientApp.showToast) {
+                ClientApp.showToast('Pulled latest updates for [' + currentTarget + ']!', 'success', '⬇️');
+                await ClientApp.fetchCodebaseMetrics(currentTarget);
+              }
+            } else {
+              var errOut = (res && (res.output || res.error)) || 'Failed to pull';
+              if (typeof ClientApp !== 'undefined' && ClientApp.showFeedback) {
+                ClientApp.showFeedback('⚠️ Pull Notice / Conflicts [' + currentTarget + ']:\n\n' + errOut, 'error');
+              }
+            }
+          } catch(err) {
+            if (typeof ClientApp !== 'undefined' && ClientApp.showFeedback) {
+              ClientApp.showFeedback('❌ Pull Exception:\n\n' + err.message, 'error');
+            }
+          } finally {
+            btnPullSingle.disabled = false;
+            btnPullSingle.textContent = '⬇️ Pull [' + currentTarget + ']';
+          }
+        };
+
+        var btnTimeline = el('button', {
+          style: { background: '#271052', border: '1px solid #8257e5', color: '#d2a8ff', borderRadius: '4px', cursor: 'pointer', fontSize: '0.7rem', padding: '0.15rem 0.45rem', fontWeight: 'bold', fontFamily: 'monospace' },
+          title: 'Inspect interactive undo history timeline for this project',
+          onclick: function() {
+            if (typeof LunoTimelineDialog !== 'undefined') {
+              LunoTimelineDialog.open({ project: currentTarget });
+            }
+          }
+        }, '⏳ History');
+
+        var btnBackupAll = el('button', {
+          style: { background: '#271052', border: '1px solid #8257e5', color: '#f7df1e', borderRadius: '4px', cursor: 'pointer', fontSize: '0.7rem', padding: '0.15rem 0.45rem', fontWeight: 'bold', fontFamily: 'monospace' },
+          title: 'Download complete backup of all projects in a single ZIP file',
+          onclick: function() {
+            if (typeof LunoZipExporter !== 'undefined') {
+              LunoZipExporter.downloadAllProjectsAsZip();
+            }
+          }
+        }, '📦 Backup All (.ZIP)');
+
+        var btnCloneScript = el('button', {
+          style: { background: '#161b22', border: '1px solid #30363d', color: '#58a6ff', borderRadius: '4px', cursor: 'pointer', fontSize: '0.7rem', padding: '0.15rem 0.45rem', fontWeight: 'bold', fontFamily: 'monospace' },
+          title: 'Download shell script to clone/pull all repositories on another machine',
+          onclick: function() {
+            if (typeof LunoZipExporter !== 'undefined') {
+              LunoZipExporter.downloadCloneScript();
+            }
+          }
+        }, '📜 Clone Script');
+
+        var container = el('div', {
+          id: 'luno-target-checkpoint-card',
+          style: {
+            background: 'var(--bg-card, #161b22)',
+            border: '1px solid var(--border-color, #30363d)',
+            borderRadius: '10px',
+            padding: '0.85rem',
+            margin: '0.3rem auto 0.5rem auto',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '0.6rem',
+            width: '100%',
+            boxSizing: 'border-box',
+            boxShadow: 'var(--card-shadow, 0 4px 14px rgba(0,0,0,0.3))'
+          }
+        },
+          el('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.4rem', borderBottom: '1px solid var(--border-color, #21262d)', paddingBottom: '0.4rem' } },
+            el('div', { style: { display: 'flex', alignItems: 'center', gap: '0.4rem' } },
+              el('strong', { style: { color: 'var(--text-accent, #00f2fe)', fontSize: '0.9rem' } }, '📸 CHECKPOINT & DEPLOY:'),
+              el('span', { style: { color: 'var(--accent-green, #3fb950)', fontWeight: 'bold', fontSize: '0.85rem' } }, currentTarget)
+            ),
+            el('div', { style: { display: 'flex', gap: '0.4rem', alignItems: 'center', flexWrap: 'wrap' } },
+              btnTimeline,
+              btnBackupAll,
+              btnCloneScript,
+              el('button', {
+                style: { background: '#271052', border: '1px solid #8257e5', color: '#d2a8ff', borderRadius: '4px', cursor: 'pointer', fontSize: '0.7rem', padding: '0.15rem 0.45rem', fontWeight: 'bold', fontFamily: 'monospace' },
+                title: 'Update GitHub Personal Access Token (PAT)',
+                onclick: function() {
+                  var curr = (typeof LunoDeployEngine !== 'undefined') ? LunoDeployEngine.getGithubToken() : '';
+                  var val = prompt('Paste your GitHub Personal Access Token (PAT with "repo" scope):', curr);
+                  if (val !== null) {
+                    if (typeof LunoDeployEngine !== 'undefined') {
+                      LunoDeployEngine.setGithubToken(val.trim());
+                    }
+                    if (typeof ClientApp !== 'undefined' && ClientApp.showToast) {
+                      ClientApp.showToast('Updated GitHub PAT token in storage!', 'success', '🔑');
+                    }
+                  }
+                }
+              }, '🔑 Token'),
+              el('span', {
+                id: 'checkpoint-btn-subtitle',
+                style: { fontSize: '0.72rem', color: uncommitted > 0 ? '#ff9800' : 'var(--text-secondary, #8b949e)', fontWeight: 'bold' }
+              }, uncommitted + ' uncommitted file' + (uncommitted === 1 ? '' : 's'))
+            )
+          ),
+          noteInput,
+          el('label', {
+            style: { display: 'flex', alignItems: 'center', gap: '0.45rem', fontSize: '0.75rem', color: 'var(--text-primary, #c9d1d9)', cursor: 'pointer', userSelect: 'none' }
+          },
+            chkDeployPages,
+            el('span', {}, '🚀 Deploy to GitHub Pages (push remote & publish live site)')
+          ),
+          el('div', { style: { display: 'flex', gap: '0.45rem', flexWrap: 'wrap' } },
+            btnAction,
+            btnPullSingle,
+            btnDirectLan
+          ),
+          el('div', {
+            style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.4rem', paddingTop: '0.2rem', fontSize: '0.74rem' }
+          },
+            el('div', { style: { display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' } },
+              el('a', {
+                href: liveUrl,
+                target: '_blank',
+                title: liveUrl,
+                style: { color: 'var(--text-accent, #58a6ff)', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '0.25rem', fontWeight: 'bold' }
+              }, '🌐 Live Pages Site ↗'),
+              el('a', {
+                href: localUrl,
+                target: '_blank',
+                title: 'Open local URL in standalone window',
+                style: { color: 'var(--accent-green, #7ee787)', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '0.25rem', fontWeight: 'bold' }
+              }, '🖥️ Standalone Tab ↗')
+            ),
+            el('button', {
+              style: { background: 'none', border: 'none', color: 'var(--text-secondary, #8b949e)', cursor: 'pointer', fontSize: '0.72rem', fontFamily: 'monospace', textDecoration: 'underline' },
+              onclick: function() {
+                if (typeof LunoSpaDock !== 'undefined') LunoSpaDock.mountView('deploy');
+              }
+            }, 'Open Deploy Hub ▾')
+          )
+        );
+
+        return container;
+      }
   static renderDevDrawer(m) {
     var el = m || (typeof LunoUIComponents !== 'undefined' ? LunoUIComponents.makeElement : null);
     var devEditorContent = el('div', { id: 'dev-editor-content', style: { display: ClientAppUI.devEditorExpanded ? 'block' : 'none', marginTop: '0.45rem' } },

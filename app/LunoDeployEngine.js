@@ -1465,58 +1465,58 @@ class LunoDeployEngine {
       return md;
     }
 
-  static async directLanSync(targetHost = '10.0.0.245', options = {}) {
-      var pName = options.project || (typeof ClientApp !== 'undefined' && ClientApp.getTargetProject ? ClientApp.getTargetProject() : 'Luno');
-      var isAll = (pName === 'all' || options.all === true);
+  static async directLanSync(targetHost = null, options = {}) {
+        var peerHost = targetHost || LunoDeployEngine.getPeerHost();
+        var pName = options.project || (typeof ClientApp !== 'undefined' && ClientApp.getTargetProject ? ClientApp.getTargetProject() : 'Luno');
+        var isAll = (pName === 'all' || options.all === true);
 
-      try {
-        var codeData = await LunoApiClient.fetchAllCode(isAll ? '' : pName, {
-          includeProjectLibrary: true,
-          includeAllLibrary: false
-        });
-
-        if (!codeData || !codeData.filesMap || Object.keys(codeData.filesMap).length === 0) {
-          return { success: false, error: 'No files found to sync' };
-        }
-
-        var filesToSend = [];
-        for (var fPath in codeData.filesMap) {
-          if (!Object.prototype.hasOwnProperty.call(codeData.filesMap, fPath)) continue;
-          filesToSend.push({
-            filePath: fPath,
-            content: codeData.filesMap[fPath],
-            action: 'direct'
+        try {
+          var codeData = await LunoApiClient.fetchAllCode(isAll ? '' : pName, {
+            includeProjectLibrary: true,
+            includeAllLibrary: false
           });
+
+          if (!codeData || !codeData.filesMap || Object.keys(codeData.filesMap).length === 0) {
+            return { success: false, error: 'No files found to sync' };
+          }
+
+          var filesToSend = [];
+          for (var fPath in codeData.filesMap) {
+            if (!Object.prototype.hasOwnProperty.call(codeData.filesMap, fPath)) continue;
+            filesToSend.push({
+              filePath: fPath,
+              content: codeData.filesMap[fPath],
+              action: 'direct'
+            });
+          }
+
+          var postData = JSON.stringify({
+            files: filesToSend,
+            serverScript: '',
+            project: isAll ? '' : pName
+          });
+
+          var res = await fetch(`http://${peerHost}:8080/api/save` + (isAll ? '' : `?project=${encodeURIComponent(pName)}`), {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-Luno-Client': '1'
+            },
+            body: postData
+          });
+
+          var data = await res.json();
+          return {
+            success: data && data.success,
+            count: filesToSend.length,
+            host: peerHost,
+            project: isAll ? 'All Files' : pName,
+            response: data
+          };
+        } catch (err) {
+          return { success: false, error: err.message, host: peerHost };
         }
-
-        var postData = JSON.stringify({
-          files: filesToSend,
-          serverScript: '',
-          project: isAll ? '' : pName
-        });
-
-        var res = await fetch(`http://${targetHost}:8080/api/save` + (isAll ? '' : `?project=${encodeURIComponent(pName)}`), {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'X-Luno-Client': '1'
-          },
-          body: postData
-        });
-
-        var data = await res.json();
-        return {
-          success: data && data.success,
-          count: filesToSend.length,
-          host: targetHost,
-          project: isAll ? 'All Files' : pName,
-          response: data
-        };
-      } catch (err) {
-        return { success: false, error: err.message, host: targetHost };
       }
-    }
-
   static getPeerHost() {
       try {
         if (typeof localStorage !== 'undefined') {
@@ -2026,6 +2026,49 @@ class LunoDeployEngine {
         return false;
       }
     }
+
+  static async directLanPull(sourceHost = null, options = {}) {
+        var peerHost = sourceHost || LunoDeployEngine.getPeerHost();
+        var pName = options.project || (typeof ClientApp !== 'undefined' && ClientApp.getTargetProject ? ClientApp.getTargetProject() : 'Luno');
+        var isAll = (pName === 'all' || options.all === true);
+
+        try {
+          var query = isAll ? '' : ('?project=' + encodeURIComponent(pName));
+          var res = await fetch(`http://${peerHost}:8080/api/all-code` + query);
+          if (!res.ok) throw new Error(`HTTP ${res.status} from peer node at ${peerHost}:8080`);
+          var codeData = await res.json();
+
+          if (!codeData || !codeData.filesMap || Object.keys(codeData.filesMap).length === 0) {
+            return { success: false, error: `No files returned from peer at ${peerHost}:8080` };
+          }
+
+          var filesToSave = [];
+          for (var fPath in codeData.filesMap) {
+            if (!Object.prototype.hasOwnProperty.call(codeData.filesMap, fPath)) continue;
+            filesToSave.push({
+              filePath: fPath,
+              content: codeData.filesMap[fPath],
+              action: 'direct'
+            });
+          }
+
+          var saveRes = await LunoApiClient.savePayload({
+            files: filesToSave,
+            serverScript: '',
+            project: isAll ? '' : pName
+          }, isAll ? '' : pName);
+
+          return {
+            success: saveRes && saveRes.success,
+            count: filesToSave.length,
+            peerHost: peerHost,
+            project: isAll ? 'All Files' : pName,
+            response: saveRes
+          };
+        } catch (err) {
+          return { success: false, error: err.message, peerHost: peerHost };
+        }
+      }
 }
 
 globalThis.LunoDeployEngine = LunoDeployEngine;
