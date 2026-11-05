@@ -142,61 +142,66 @@ class LunoDeployEngine {
     } catch(e) {}
   }
 
-  // ---------------------------------------------------------------------------
-  // SMART SYNCHRONIZATION CORE (GIT-MANAGED, ZERO RAW-FILE DESTRUCTIVE OVERWRITES)
-  // ---------------------------------------------------------------------------
   static async syncEverything(options = {}) {
-    var opts = options || {};
-    var peerHost = opts.peerHost || LunoDeployEngine.getPeerHost();
-    var onProgress = typeof opts.onProgress === 'function' ? opts.onProgress : () => {};
+      var opts = options || {};
+      var peerHost = opts.peerHost || LunoDeployEngine.getPeerHost();
+      var onProgress = typeof opts.onProgress === 'function' ? opts.onProgress : () => {};
 
-    onProgress('🔍 1/3: Checking project modifications...');
-    var statusRes = await LunoDeployEngine.getFleetStatus(false);
-    var dirty = (statusRes && statusRes.dirtyProjects) || [];
-    var dirtyNames = dirty.map(d => d.name);
+      onProgress('🔍 1/3: Checking project modifications...');
+      var statusRes = await LunoDeployEngine.getFleetStatus(false);
+      var dirty = (statusRes && statusRes.dirtyProjects) || [];
+      var dirtyNames = dirty.map(d => d.name);
 
-    var committedCount = 0;
-    if (dirtyNames.length > 0) {
-      onProgress(`📸 2/3: Recording Git snapshots for ${dirtyNames.length} modified project(s)...`);
-      var commitRes = await LunoDeployEngine.commitSelectedProjects(dirtyNames, `[Auto-Sync Checkpoint] ${new Date().toLocaleString()}`);
-      committedCount = (commitRes && commitRes.results ? commitRes.results.filter(r => r.changesCommitted).length : dirtyNames.length);
-    } else {
-      onProgress('✓ Working trees are clean. No uncommitted modifications.');
+      var committedCount = 0;
+      if (dirtyNames.length > 0) {
+        onProgress(`📸 2/3: Recording Git snapshots for ${dirtyNames.length} modified project(s)...`);
+        var commitRes = await LunoDeployEngine.commitSelectedProjects(dirtyNames, `[Auto-Sync Checkpoint] ${new Date().toLocaleString()}`);
+        committedCount = (commitRes && commitRes.results ? commitRes.results.filter(r => r.changesCommitted).length : dirtyNames.length);
+      } else {
+        onProgress('✓ Working trees are clean. No uncommitted modifications.');
+      }
+
+      onProgress('⬆️ 3/3: Pushing latest commits to GitHub...');
+      var pushRes = await LunoDeployEngine.fleetSync('push', {
+        commitMsg: `[Fleet Sync] ${new Date().toLocaleString()}`
+      });
+
+      if (pushRes && !pushRes.success) {
+        onProgress(`⚠️ Remote push had warnings/failures: ${pushRes.error || 'Some repos could not push to GitHub'}`);
+      }
+
+      // Only notify peer node to pull if push succeeded or if explicitly requested
+      var peerPullRes = null;
+      if (pushRes && pushRes.success) {
+        try {
+          onProgress(`🌐 Notifying peer node (${peerHost}:8080) to pull updates...`);
+          peerPullRes = await LunoDeployEngine.fleetSync('pull', { host: peerHost });
+        } catch(e) {
+          peerPullRes = { success: false, error: e.message };
+        }
+      } else {
+        peerPullRes = { success: false, error: 'Skipped peer pull because local push had notices' };
+      }
+
+      var summary = [
+        '================================================================================',
+        '🎉 SMART FLEET SYNCHRONIZATION COMPLETE',
+        '================================================================================',
+        `• Local Snapshots:       ${committedCount} project(s) committed cleanly`,
+        `• GitHub Remote Push:    ${pushRes && pushRes.success ? '✅ Pushed to GitHub' : '⚠️ ' + (pushRes?.error || 'Remote push notice')}`,
+        `• Peer Synchronization:  ${peerPullRes && peerPullRes.success ? '✅ Peer (' + peerHost + ') synchronized cleanly via Git' : 'ℹ️ ' + (peerPullRes?.error || 'Peer standby')}`,
+        '• Integrity Guarantee:   Git-versioned history. Zero blind raw-file overwrites.',
+        '================================================================================\n'
+      ].join('\n');
+
+      return {
+        success: true,
+        committedCount,
+        pushRes,
+        peerPullRes,
+        summary
+      };
     }
-
-    onProgress('⬆️ 3/3: Pushing latest commits to GitHub...');
-    var pushRes = await LunoDeployEngine.fleetSync('push', {
-      commitMsg: `[Fleet Sync] ${new Date().toLocaleString()}`
-    });
-
-    // Notify peer node safely over Git pull (never raw file blast)
-    var peerPullRes = null;
-    try {
-      peerPullRes = await LunoDeployEngine.fleetSync('pull', { host: peerHost });
-    } catch(e) {
-      peerPullRes = { success: false, error: e.message };
-    }
-
-    var summary = [
-      '================================================================================',
-      '🎉 SMART FLEET SYNCHRONIZATION COMPLETE',
-      '================================================================================',
-      `• Local Snapshots:       ${committedCount} project(s) committed cleanly`,
-      `• GitHub Remote Push:    ${pushRes && pushRes.success ? '✅ Pushed to GitHub' : '⚠️ ' + (pushRes?.error || 'Remote push notice')}`,
-      `• Peer Synchronization:  ${peerPullRes && peerPullRes.success ? '✅ Peer (' + peerHost + ') synchronized cleanly via Git' : 'ℹ️ Peer node (' + peerHost + ') on standby'}`,
-      '• Integrity Guarantee:   Git-versioned history. Zero blind raw-file overwrites.',
-      '================================================================================\n'
-    ].join('\n');
-
-    return {
-      success: true,
-      committedCount,
-      pushRes,
-      peerPullRes,
-      summary
-    };
-  }
-
   // Safe wrapper for backwards-compatibility: ensures single-project push doesn't clobber files
   static async directLanSync(targetHost = null, options = {}) {
     var peerHost = targetHost || LunoDeployEngine.getPeerHost();

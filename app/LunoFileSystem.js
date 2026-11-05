@@ -103,40 +103,40 @@ class LunoIndexedDbAdapter {
     }
 
   static normalizeKey(filePath, projectName) {
-      let clean = (filePath || '').replace(/\\/g, '/').replace(/^\/+/, '').trim();
-      if (clean.startsWith('Luno Workspace/')) clean = clean.slice(15).trim();
-      if (clean.startsWith('./')) clean = clean.slice(2).trim();
+        let clean = (filePath || '').replace(/\\/g, '/').replace(/^\/+/, '').trim();
+        if (clean.startsWith('Luno Workspace/')) clean = clean.slice(15).trim();
+        if (clean.startsWith('./')) clean = clean.slice(2).trim();
 
-      let proj = projectName || (typeof ClientApp !== 'undefined' && ClientApp.getTargetProject ? ClientApp.getTargetProject() : 'Luno');
+        let proj = projectName || (typeof ClientApp !== 'undefined' && ClientApp.getTargetProject ? ClientApp.getTargetProject() : 'Luno');
 
-      // Shared library files are always anchored exclusively to project 'Library'
-      if (clean.startsWith('Library/') || clean.startsWith('library/')) {
-        proj = 'Library';
-        clean = clean.replace(/^(?:Library|library)\//, '');
-      } else {
-        const firstSlash = clean.indexOf('/');
-        if (firstSlash !== -1) {
-          const firstSeg = clean.slice(0, firstSlash);
-          const knownSiblings = [
-            'vibes', 'aardvarkBookmarklet', 'AardvarkExtension', 'AardvarkPlaylist', 'AlphabetGame',
-            'Basic3D', 'BasicsWithDialogBox', 'BookmarkletWorkshop', 'BulbAndButton', 'Calculator',
-            'Es6Converter', 'LegoDetective', 'LunoParser', 'LunoTests', 'MathStorm', 'Penrose', 'PleasureAndPain',
-            'RobotDividend', 'SvgStudio', 'TriBlob', 'ValuationOfAccudraw', 'accuCad', 'accudraw',
-            'guessTheNoteGame', 'situation', 'squircle', 'Squircle', 'teacup', 'Library', 'Luno',
-            'CadPlan', 'TouchController', 'CompassApp', 'KeyCommandApp'
-          ];
-          if (knownSiblings.includes(firstSeg) || (proj && firstSeg.toLowerCase() === proj.toLowerCase())) {
-            proj = firstSeg;
-            clean = clean.slice(firstSlash + 1);
+        // Shared library files are always anchored exclusively to project 'Library'
+        if (clean.startsWith('Library/') || clean.startsWith('library/')) {
+          proj = 'Library';
+          clean = clean.replace(/^(?:Library|library)\//, '');
+        } else {
+          const firstSlash = clean.indexOf('/');
+          if (firstSlash !== -1) {
+            const firstSeg = clean.slice(0, firstSlash);
+            const knownSiblings = [
+              'vibes', 'aardvarkBookmarklet', 'AardvarkExtension', 'AardvarkPlaylist', 'AlphabetGame',
+              'Basic3D', 'BasicsWithDialogBox', 'BookmarkletWorkshop', 'BulbAndButton', 'Calculator',
+              'Es6Converter', 'LegoDetective', 'LunoParser', 'LunoTests', 'MathStorm', 'Penrose', 'PleasureAndPain',
+              'RobotDividend', 'SvgStudio', 'TriBlob', 'ValuationOfAccudraw', 'accuCad', 'accudraw',
+              'guessTheNoteGame', 'situation', 'squircle', 'Squircle', 'teacup', 'Library', 'Luno',
+              'CadPlan', 'TouchController', 'CompassApp', 'KeyCommandApp', 'HomeSetup', 'Opus', 'JobsAndAI', 'QuoraToys'
+            ];
+            if (knownSiblings.includes(firstSeg) || (proj && firstSeg.toLowerCase() === proj.toLowerCase())) {
+              proj = firstSeg;
+              clean = clean.slice(firstSlash + 1);
+            }
+          }
+          if (clean.startsWith(proj + '/')) {
+            clean = clean.slice(proj.length + 1);
           }
         }
-        if (clean.startsWith(proj + '/')) {
-          clean = clean.slice(proj.length + 1);
-        }
-      }
 
-      return { id: proj + '::' + clean, project: proj, path: clean };
-    }
+        return { id: proj + '::' + clean, project: proj, path: clean };
+      }
   static async read(filePath, projectName) {
       const db = await LunoIndexedDbAdapter.getDb();
       const key = LunoIndexedDbAdapter.normalizeKey(filePath, projectName);

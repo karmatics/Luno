@@ -94,7 +94,7 @@
       "app/InboxActionTimer.js"
     ]
   },
-  "processedCountSinceCheckpoint": 30,
+  "processedCountSinceCheckpoint": 45,
   "changedMethods": {
     "Comments/js/Comments.js": "2026-10-21T21:59:29.105Z",
     "Comments/js/CommentsInteractiveComponent.js": "2026-10-21T21:59:29.105Z",
@@ -122,7 +122,7 @@
     "HomeSetup/content/handoff.html": "2026-11-01T05:44:22.853Z",
     "HomeSetup/luno.json": "2026-10-25T19:13:11.473Z",
     "core/LunoServer.js": "2026-11-01T06:17:13.332Z",
-    "app/LunoDeployEngine.js": "2026-11-03T07:33:06.051Z",
+    "app/LunoDeployEngine.js": "2026-11-05T04:33:21.215Z",
     "fleet-git.sh": "2026-10-26T07:05:01.201Z",
     "app/OutboxQueue.js": "2026-11-01T05:44:22.853Z",
     "app/OutboxOptionsModal.js": "2026-10-28T01:57:11.360Z",
@@ -134,7 +134,7 @@
     "app/LunoPromptInstructions.js": "2026-11-01T05:44:22.853Z",
     "app/ClientAppUI.js": "2026-11-03T07:33:06.051Z",
     "app/LunoSpaHeaderNav.js": "2026-11-01T06:17:13.332Z",
-    "QuoraToys/css/basicsWithDialogBox.css": "2026-11-03T13:51:53.519Z",
+    "QuoraToys/css/basicsWithDialogBox.css": "2026-11-05T04:51:17.993Z",
     "QuoraToys/extension/background.js": "2026-11-03T13:51:53.519Z",
     "QuoraToys/extension/css/quoraToys.css": "2026-11-03T13:51:53.519Z",
     "QuoraToys/extension/dictation.html": "2026-11-03T13:51:53.519Z",
@@ -161,10 +161,10 @@
     "QuoraToys/js/QuoraArchiverComponent.js": "2026-11-03T13:51:53.519Z",
     "QuoraToys/js/QuoraBookmarkletComponent.js": "2026-11-03T13:51:53.519Z",
     "QuoraToys/js/QuoraExtensionComponent.js": "2026-11-03T13:51:53.519Z",
-    "QuoraToys/js/QuoraStudioComponent.js": "2026-11-03T13:51:53.519Z",
-    "QuoraToys/js/QuoraToys.js": "2026-11-03T13:51:53.519Z",
-    "QuoraToys/js/QuoraToysApp.js": "2026-11-03T13:51:53.519Z",
-    "QuoraToys/js/QuoraToysContent.js": "2026-11-03T13:51:53.519Z",
+    "QuoraToys/js/QuoraStudioComponent.js": "2026-11-05T05:48:18.307Z",
+    "QuoraToys/js/QuoraToys.js": "2026-11-05T04:33:21.215Z",
+    "QuoraToys/js/QuoraToysApp.js": "2026-11-05T04:33:21.215Z",
+    "QuoraToys/js/QuoraToysContent.js": "2026-11-05T05:48:18.307Z",
     "QuoraToys/luno.json": "2026-11-03T13:51:53.519Z",
     "Library/DomBasics.js": "2026-11-04T05:39:22.828Z",
     "Library/UITools.js": "2026-11-04T05:39:22.828Z",
@@ -191,7 +191,7 @@
     "QuoraToys/js/Geometry.js": "2026-11-03T13:51:53.519Z",
     "QuoraToys/js/GeometryUtils.js": "2026-11-03T13:51:53.519Z",
     "QuoraToys/js/HueRingCP.js": "2026-11-03T13:51:53.519Z",
-    "QuoraToys/js/QuoraAnnotationComponent.js": "2026-11-03T13:51:53.519Z",
+    "QuoraToys/js/QuoraAnnotationComponent.js": "2026-11-05T06:40:06.173Z",
     "QuoraToys/js/TriangleCP.js": "2026-11-03T13:51:53.519Z",
     "QuoraToys/js/UpdateControlPoints.js": "2026-11-03T13:51:53.519Z",
     "Library/ColorPicker.js": "2026-11-03T13:51:53.519Z",
@@ -219,7 +219,10 @@
     "EconomicsOfAutomation/makeThumbs.js": "2026-11-04T05:39:22.828Z",
     "EconomicsOfAutomation/objections.html": "2026-11-04T05:39:22.828Z",
     "EconomicsOfAutomation/rules.html": "2026-11-04T05:39:22.828Z",
-    "Library/CommunityOracle.js": "2026-11-04T05:39:22.828Z"
+    "Library/CommunityOracle.js": "2026-11-04T05:39:22.828Z",
+    "app/LunoApiClient.js": "2026-11-05T04:33:21.215Z",
+    "app/LunoManifestDecisionEngine.js": "2026-11-05T04:33:21.215Z",
+    "app/LunoFileSystem.js": "2026-11-05T04:33:21.215Z"
   },
   "lastCheckpointTime": "2026-11-04T05:36:15.536Z",
   "pendingCheckpointDescription": "Clean working tree"
