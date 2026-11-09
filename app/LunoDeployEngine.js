@@ -112,36 +112,40 @@ class LunoDeployEngine {
   }
 
   static getPeerHost() {
-    try {
-      if (typeof localStorage !== 'undefined') {
-        var saved = localStorage.getItem('luno_peer_host');
-        if (saved && saved.trim()) return saved.trim();
+      try {
+        if (typeof localStorage !== 'undefined') {
+          var saved = localStorage.getItem('luno_peer_host');
+          if (saved && saved.trim()) return saved.trim();
+        }
+      } catch(e) {}
+
+      // Dynamic resolution based on active host platform
+      if (typeof ClientApp !== 'undefined') {
+        if (ClientApp.activePlatform === 'linux' || ClientApp.isLinux) return '10.0.0.226';
+        if (ClientApp.activePlatform === 'darwin' || ClientApp.isMac) return '10.0.0.245';
       }
-    } catch(e) {}
 
-    if (typeof ClientApp !== 'undefined') {
-      if (ClientApp.activePlatform === 'linux' || ClientApp.isLinux) return '10.0.0.226';
-      if (ClientApp.activePlatform === 'darwin' || ClientApp.isMac) return '10.0.0.245';
-    }
+      if (typeof window !== 'undefined' && window.location) {
+        var h = window.location.hostname;
+        if (h === '10.0.0.245') return '10.0.0.226';
+        if (h === '10.0.0.226') return '10.0.0.245';
+      }
 
-    if (typeof window !== 'undefined' && window.location) {
-      var h = window.location.hostname;
-      if (h === '10.0.0.245') return '10.0.0.226';
-      if (h === '10.0.0.226') return '10.0.0.245';
-    }
-
-    return '10.0.0.245';
+      return '10.0.0.245';
   }
 
   static setPeerHost(host) {
-    if (!host) return;
-    try {
-      if (typeof localStorage !== 'undefined') {
-        localStorage.setItem('luno_peer_host', host.trim());
+      if (!host) return;
+      const clean = host.replace(/^http:\/\//, '').replace(/:8080.*$/, '').trim();
+      try {
+        if (typeof localStorage !== 'undefined') {
+          localStorage.setItem('luno_peer_host', clean);
+        }
+      } catch(e) {}
+      if (typeof ClientApp !== 'undefined' && ClientApp.showToast) {
+        ClientApp.showToast(`Peer host updated to ${clean}:8080`, 'info', '🌐');
       }
-    } catch(e) {}
   }
-
   static async syncEverything(options = {}) {
       var opts = options || {};
       var peerHost = opts.peerHost || LunoDeployEngine.getPeerHost();

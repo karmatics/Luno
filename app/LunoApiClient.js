@@ -275,78 +275,58 @@ class LunoApiClient {
   }
 
   static async savePayload(payload, project = '') {
-      let payloadObj = payload;
-      if (typeof payload === 'string') {
-        try { payloadObj = JSON.parse(payload); } catch (e) { payloadObj = { files: [], rawText: payload }; }
-      }
-      if (payloadObj && typeof payloadObj === 'object' && project) {
-        payloadObj.project = project;
-      }
-
-      var targetProj = project || (payloadObj && payloadObj.project) || '';
-
-      // Strip redundant projectName/ prefix so path resolutions remain clean
-      if (payloadObj && Array.isArray(payloadObj.files)) {
-        payloadObj.files.forEach(f => {
-          if (f.filePath) {
-            f.filePath = LunoApiClient.cleanPath(f.filePath);
-            if (targetProj && f.filePath.startsWith(targetProj + '/')) {
-              f.filePath = f.filePath.slice(targetProj.length + 1);
-            }
-          }
-        });
-      }
-
-      if (LunoApiClient.isStaticMode()) {
-        const adapter = LunoFileSystem.getAdapter();
-        let modified = 0;
-        if (adapter && Array.isArray(payloadObj.files)) {
-          if (typeof adapter.writeBatch === 'function') {
-            const res = await adapter.writeBatch(payloadObj.files, targetProj);
-            modified = res.count || 0;
-          } else if (adapter.write) {
-            for (const file of payloadObj.files) {
-              if (file.filePath && file.content !== undefined) {
-                await adapter.write(file.filePath, file.content, targetProj);
-                modified++;
-              }
-            }
-          }
-
-          // Mirror server metadata updates in IndexedDB
-          if (modified > 0 && targetProj) {
-            try {
-              var metaRes = await adapter.read('luno.json', targetProj);
-              var meta = {};
-              if (metaRes && metaRes.success && metaRes.content) {
-                meta = JSON.parse(metaRes.content);
-              }
-              meta.processedCountSinceCheckpoint = (meta.processedCountSinceCheckpoint || 0) + modified;
-              meta.changedMethods = meta.changedMethods || {};
-              var nowIso = new Date().toISOString();
-              payloadObj.files.forEach(f => {
-                if (f.filePath && !f.filePath.endsWith('.bak')) {
-                  meta.changedMethods[f.filePath] = nowIso;
-                }
-              });
-              await adapter.write('luno.json', JSON.stringify(meta, null, 2) + '\n', targetProj);
-            } catch(mErr) {}
-          }
+        let payloadObj = payload;
+        if (typeof payload === 'string') {
+          try { payloadObj = JSON.parse(payload); } catch (e) { payloadObj = { files: [], rawText: payload }; }
         }
-        return {
-          success: true,
-          count: modified,
-          modifiedCount: modified,
-          llmFeedback: '✅ Saved ' + modified + ' file(s) cleanly to browser IndexedDB storage.'
-        };
-      }
+        if (payloadObj && typeof payloadObj === 'object' && project) {
+          payloadObj.project = project;
+        }
 
-      const pParam = targetProj ? ('?project=' + encodeURIComponent(targetProj)) : '';
-      return await LunoApiClient.safeJsonFetch('/api/save' + pParam, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-Luno-Client': '1' },
-        body: JSON.stringify(payloadObj)
-      });
+        var targetProj = project || (payloadObj && payloadObj.project) || '';
+
+        // Strip redundant projectName/ prefix so path resolutions remain clean
+        if (payloadObj && Array.isArray(payloadObj.files)) {
+          payloadObj.files.forEach(f => {
+            if (f.filePath) {
+              f.filePath = LunoApiClient.cleanPath(f.filePath);
+              if (targetProj && f.filePath.startsWith(targetProj + '/')) {
+                f.filePath = f.filePath.slice(targetProj.length + 1);
+              }
+            }
+          });
+        }
+
+        if (LunoApiClient.isStaticMode()) {
+          const adapter = LunoFileSystem.getAdapter();
+          let modified = 0;
+          if (adapter && Array.isArray(payloadObj.files)) {
+            if (typeof adapter.writeBatch === 'function') {
+              const res = await adapter.writeBatch(payloadObj.files, targetProj);
+              modified = res.count || 0;
+            } else if (adapter.write) {
+              for (const file of payloadObj.files) {
+                if (file.filePath && file.content !== undefined) {
+                  await adapter.write(file.filePath, file.content, targetProj);
+                  modified++;
+                }
+              }
+            }
+          }
+          return {
+            success: true,
+            count: modified,
+            modifiedCount: modified,
+            llmFeedback: '✅ Saved ' + modified + ' file(s) cleanly to browser IndexedDB storage.'
+          };
+        }
+
+        const pParam = targetProj ? ('?project=' + encodeURIComponent(targetProj)) : '';
+        return await LunoApiClient.safeJsonFetch('/api/save' + pParam, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-Luno-Client': '1' },
+          body: JSON.stringify(payloadObj)
+        });
   }
   static async forkProject(sourceProject, newProject) {
     if (LunoApiClient.isStaticMode()) {
