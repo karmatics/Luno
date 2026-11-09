@@ -178,19 +178,14 @@ class ClientApp {
         }
       } catch (e) {}
 
-      // Query real Git status instead of writing/reading counters from luno.json
+      // Query real Git status directly from the file diff engine
       try {
         var diffRes = await LunoApiClient.fetchFileDiff('all', proj);
-        if (diffRes && Array.isArray(diffRes.modifiedFiles)) {
-          ClientApp.uncommittedCount = diffRes.modifiedFiles.length;
-          var cpSub = document.getElementById('checkpoint-btn-subtitle');
-          if (cpSub) {
-            cpSub.textContent = 'save in git (' + ClientApp.uncommittedCount + ' uncommitted file' + (ClientApp.uncommittedCount === 1 ? '' : 's') + ')';
-          }
-        } else {
-          ClientApp.uncommittedCount = 0;
-          var cpSub2 = document.getElementById('checkpoint-btn-subtitle');
-          if (cpSub2) cpSub2.textContent = 'working tree clean';
+        var modifiedList = (diffRes && Array.isArray(diffRes.modifiedFiles)) ? diffRes.modifiedFiles : [];
+        ClientApp.uncommittedCount = modifiedList.length;
+
+        if (typeof ClientAppUI !== 'undefined' && typeof ClientAppUI.refreshGitDeckStatus === 'function') {
+          ClientAppUI.refreshGitDeckStatus(proj);
         }
       } catch (e) {}
   }
