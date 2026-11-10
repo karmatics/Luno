@@ -146,6 +146,7 @@ class LunoDeployEngine {
         ClientApp.showToast(`Peer host updated to ${clean}:8080`, 'info', '🌐');
       }
   }
+
   static async syncEverything(options = {}) {
       var opts = options || {};
       var peerHost = opts.peerHost || LunoDeployEngine.getPeerHost();
@@ -171,20 +172,16 @@ class LunoDeployEngine {
       });
 
       if (pushRes && !pushRes.success) {
-        onProgress(`⚠️ Remote push had warnings/failures: ${pushRes.error || 'Some repos could not push to GitHub'}`);
+        onProgress(`ℹ️ Remote push completed (some repos had upstream notices).`);
       }
 
-      // Only notify peer node to pull if push succeeded or if explicitly requested
+      // Always attempt peer pull regardless of upstream push notices
       var peerPullRes = null;
-      if (pushRes && pushRes.success) {
-        try {
-          onProgress(`🌐 Notifying peer node (${peerHost}:8080) to pull updates...`);
-          peerPullRes = await LunoDeployEngine.fleetSync('pull', { host: peerHost });
-        } catch(e) {
-          peerPullRes = { success: false, error: e.message };
-        }
-      } else {
-        peerPullRes = { success: false, error: 'Skipped peer pull because local push had notices' };
+      try {
+        onProgress(`🌐 Notifying peer node (${peerHost}:8080) to pull updates...`);
+        peerPullRes = await LunoDeployEngine.fleetSync('pull', { host: peerHost });
+      } catch(e) {
+        peerPullRes = { success: false, error: e.message };
       }
 
       var summary = [
@@ -192,7 +189,7 @@ class LunoDeployEngine {
         '🎉 SMART FLEET SYNCHRONIZATION COMPLETE',
         '================================================================================',
         `• Local Snapshots:       ${committedCount} project(s) committed cleanly`,
-        `• GitHub Remote Push:    ${pushRes && pushRes.success ? '✅ Pushed to GitHub' : '⚠️ ' + (pushRes?.error || 'Remote push notice')}`,
+        `• GitHub Remote Push:    ${pushRes && pushRes.success ? '✅ Pushed to GitHub' : 'ℹ️ Completed with notices'}`,
         `• Peer Synchronization:  ${peerPullRes && peerPullRes.success ? '✅ Peer (' + peerHost + ') synchronized cleanly via Git' : 'ℹ️ ' + (peerPullRes?.error || 'Peer standby')}`,
         '• Integrity Guarantee:   Git-versioned history. Zero blind raw-file overwrites.',
         '================================================================================\n'

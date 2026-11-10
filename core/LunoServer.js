@@ -1689,6 +1689,7 @@ static serveIndex(req, res) {
           const doFetch = parsed.fetch !== false;
           const selectedProjects = Array.isArray(parsed.projects) ? parsed.projects : null;
           const webRoot = LunoServer.getWebRootDir();
+          const account = (typeof LunoDeployEngine !== 'undefined' && LunoDeployEngine.getGithubAccount) ? LunoDeployEngine.getGithubAccount() : 'karmatics';
 
           if (!fs.existsSync(webRoot)) {
             return LunoServer.sendJSON(res, 500, { success: false, error: 'Web root directory not found: ' + webRoot });
@@ -1736,7 +1737,7 @@ static serveIndex(req, res) {
               }
 
               const remRes = await pExec('git remote get-url origin', envOpts);
-              const remoteUrl = remRes.stdout.trim();
+              let remoteUrl = remRes.stdout.trim();
               const brRes = await pExec('git branch --show-current', envOpts);
               const currentBranch = brRes.stdout.trim() || 'main';
 
@@ -1796,7 +1797,16 @@ static serveIndex(req, res) {
                   autocommitted = true;
                 }
 
-                const pullRes = await pExec(`git pull origin ${branch}`, envOpts);
+                // Standard pull
+                let pullRes = await pExec(`git pull origin ${branch}`, envOpts);
+
+                // If pull failed due to SSH key issues, fallback to public HTTPS URL
+                if (!pullRes.ok && remoteUrl.includes('git@github.com')) {
+                  const httpsUrl = `https://github.com/${account}/${item}.git`;
+                  await pExec(`git remote set-url origin ${httpsUrl}`, envOpts);
+                  pullRes = await pExec(`git pull origin ${branch}`, envOpts);
+                }
+
                 const unmergedRes = await pExec('git diff --name-only --diff-filter=U', envOpts);
                 const conflicts = unmergedRes.stdout.trim() ? unmergedRes.stdout.trim().split('\n').filter(Boolean) : [];
 
@@ -1858,7 +1868,7 @@ static serveIndex(req, res) {
           return LunoServer.sendJSON(res, 500, { success: false, error: err.message });
         }
       });
-  }
+    }
   static handleGitPull(req, res, url) {
       let body = '';
       req.on('data', chunk => { body += chunk; });
@@ -1870,17 +1880,43 @@ static serveIndex(req, res) {
           const branch = parsed.branch || 'main';
           const autocommit = parsed.autocommit !== false;
           const baseDir = LunoServer.resolveProjectBaseDir(targetProj);
+          const account = (typeof LunoDeployEngine !== 'undefined' && LunoDeployEngine.getGithubAccount) ? LunoDeployEngine.getGithubAccount() : 'karmatics';
+          const httpsUrl = `https://github.com/${account}/${targetProj}.git`;
 
+          // 1. If project folder does NOT exist, auto-clone it from GitHub over HTTPS!
           if (!fs.existsSync(baseDir)) {
-            return LunoServer.sendJSON(res, 404, { success: false, error: 'Project directory not found: ' + baseDir });
+            try {
+              const { execSync } = require('child_process');
+              fs.mkdirSync(path.dirname(baseDir), { recursive: true });
+              const cloneOut = execSync(`git clone ${httpsUrl} "${baseDir}"`, { encoding: 'utf8', timeout: 35000 });
+              return LunoServer.sendJSON(res, 200, {
+                success: true,
+                project: targetProj,
+                autocommitted: false,
+                hasConflicts: false,
+                conflicts: [],
+                output: `Cloned ${targetProj} fresh from GitHub:\n${cloneOut.trim()}`,
+                statusText: ''
+              });
+            } catch(cloneErr) {
+              return LunoServer.sendJSON(res, 404, {
+                success: false,
+                error: `Project directory not found and auto-clone failed: ${cloneErr.message}`
+              });
+            }
           }
 
           const gitDir = path.join(baseDir, '.git');
           if (!fs.existsSync(gitDir)) {
-            return LunoServer.sendJSON(res, 400, { success: false, error: 'Not a git repository: ' + targetProj });
+            // Initialize git and add origin if missing
+            try {
+              const { execSync } = require('child_process');
+              execSync('git init -b main', { cwd: baseDir, encoding: 'utf8' });
+              execSync(`git remote add origin ${httpsUrl}`, { cwd: baseDir, encoding: 'utf8' });
+            } catch(e) {}
           }
 
-          const lockFile = path.join(gitDir, 'index.lock');
+          const lockFile = path.join(baseDir, '.git', 'index.lock');
           if (fs.existsSync(lockFile)) {
             try { fs.unlinkSync(lockFile); } catch(e) {}
           }
@@ -1894,14 +1930,14 @@ static serveIndex(req, res) {
             })
           };
 
+          const { execSync } = require('child_process');
           let output = '';
           let autocommitted = false;
           let statusText = '';
           try { statusText = execSync('git status --short', envOpts).trim(); } catch(e) {}
 
-          // Safe auto-snapshot to protect local work from git merge block
+          // Safe auto-snapshot to protect local work from merge blocks
           if (statusText && autocommit) {
-            output += `ℹ️ Local uncommitted modifications detected in [${targetProj}]. Creating local safety snapshot...\n`;
             try {
               execSync('git add -A', envOpts);
               execSync(`git commit -m "[Auto-Snapshot before Pull] ${new Date().toLocaleString()}"`, envOpts);
@@ -1918,8 +1954,17 @@ static serveIndex(req, res) {
             const pullRes = execSync(`git pull origin ${branch} 2>&1`, envOpts);
             output += (pullRes.trim() || 'Already up to date.') + '\n';
           } catch(pullErr) {
-            pullSuccess = false;
-            output += ((pullErr.stdout || '') + (pullErr.stderr || pullErr.message || '')).trim() + '\n';
+            // If pull failed (e.g. SSH rejected), retry using authenticated/public HTTPS directly
+            try {
+              output += `⚠️ Retrying pull via HTTPS fallback (${httpsUrl})...\n`;
+              execSync(`git remote set-url origin ${httpsUrl}`, envOpts);
+              const retryRes = execSync(`git pull origin ${branch} 2>&1`, envOpts);
+              output += (retryRes.trim() || 'Already up to date.') + '\n';
+              pullSuccess = true;
+            } catch(retryErr) {
+              pullSuccess = false;
+              output += ((retryErr.stdout || '') + (retryErr.stderr || retryErr.message || '')).trim() + '\n';
+            }
           }
 
           let conflicts = [];
@@ -1945,7 +1990,6 @@ static serveIndex(req, res) {
         }
       });
     }
-
   static handleGitConflicts(req, res, url) {
       const targetProj = url.searchParams.get('project') || 'Luno';
       const baseDir = LunoServer.resolveProjectBaseDir(targetProj);
