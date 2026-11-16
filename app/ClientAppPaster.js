@@ -80,9 +80,8 @@ class ClientAppPaster {
 
       try {
         var targetProj = (typeof ClientApp !== 'undefined' && ClientApp.getTargetProject) ? ClientApp.getTargetProject() : 'Luno';
-
-        var payloadHash = (typeof CodeDiffer !== 'undefined' && CodeDiffer.fastHash) 
-          ? CodeDiffer.fastHash(rawText.trim()) 
+        var payloadHash = (typeof CodeDiffer !== 'undefined' && CodeDiffer.fastHash)
+          ? CodeDiffer.fastHash(rawText.trim())
           : String(rawText.trim().length);
 
         if (ClientAppPaster._lastPastedPayloadHash === payloadHash && ClientAppPaster._lastCalculatedDiffs?.length > 0) {
@@ -90,13 +89,8 @@ class ClientAppPaster {
             'All files on disk already match this payload.\n\n' +
             (ClientAppPaster._lastPastedSummary || '') + '\n\n' +
             'Your active diff view has been preserved without wiping out.';
-
-          if (targetApp && targetApp.showFeedback) {
-            targetApp.showFeedback(duplicateNotice, 'info', { fileDiffs: ClientAppPaster._lastCalculatedDiffs });
-          }
-          if (targetApp && targetApp.showToast) {
-            targetApp.showToast('Already applied — previous diffs preserved!', 'info', '🛡️');
-          }
+          if (targetApp && targetApp.showFeedback) targetApp.showFeedback(duplicateNotice, 'info', { fileDiffs: ClientAppPaster._lastCalculatedDiffs });
+          if (targetApp && targetApp.showToast) targetApp.showToast('Already applied — previous diffs preserved!', 'info', '🛡️');
           return;
         }
 
@@ -158,7 +152,6 @@ class ClientAppPaster {
         if (typeof LunoManifestDecisionEngine !== 'undefined' && LunoManifestDecisionEngine.processPayload) {
           finalPayload = await LunoManifestDecisionEngine.processPayload(rawPayload, lunoMeta, targetProj);
         }
-
         if (finalPayload && typeof finalPayload === 'object' && targetProj) {
           finalPayload.project = targetProj;
         }
@@ -170,11 +163,9 @@ class ClientAppPaster {
             var oldStr = originalFileContents.get(nKey) || originalFileContents.get(savedFile.filePath) || '';
             var newStr = savedFile.content || '';
             var diffAnalysis = CodeDiffer.analyzeDiff(oldStr, newStr, savedFile.filePath);
-
             var summaryMatch = (finalPayload.patchActionsSummary || []).find(function(s) {
               return normKey(s.path) === nKey || s.path === savedFile.filePath;
             });
-
             calculatedFileDiffs.push({
               filePath: savedFile.filePath,
               target: summaryMatch ? (summaryMatch.target || savedFile.filePath) : savedFile.filePath,
@@ -194,12 +185,8 @@ class ClientAppPaster {
         if (netLineChanges === 0 && calculatedFileDiffs.length > 0 && !finalPayload.serverScript && !finalPayload.clientScript) {
           var noChangeNotice = '✓ IDEMPOTENT PASTE: All files already match disk storage.\n' +
             (ClientAppPaster._lastPastedSummary ? ('\nPrevious Modifications (Preserved):\n' + ClientAppPaster._lastPastedSummary) : '');
-          if (targetApp && targetApp.showFeedback) {
-            targetApp.showFeedback(noChangeNotice, 'info', { fileDiffs: ClientAppPaster._lastCalculatedDiffs || calculatedFileDiffs });
-          }
-          if (targetApp && targetApp.showToast) {
-            targetApp.showToast('All files match storage (already applied)', 'info', '✓');
-          }
+          if (targetApp && targetApp.showFeedback) targetApp.showFeedback(noChangeNotice, 'info', { fileDiffs: ClientAppPaster._lastCalculatedDiffs || calculatedFileDiffs });
+          if (targetApp && targetApp.showToast) targetApp.showToast('All files match storage (already applied)', 'info', '✓');
           return;
         }
 
@@ -233,22 +220,19 @@ class ClientAppPaster {
 
         var finalFeedback = clientSummary + "\n📊 EXECUTION RESPONSE:\n" + (data.llmFeedback || JSON.stringify(data, null, 2));
 
-        // Execute in-browser client script if present
         if (finalPayload.clientScript && finalPayload.clientScript.trim()) {
           try {
-            var clientFn = new Function('UITools', 'ClientApp', finalPayload.clientScript);
-            var clientResult = clientFn(globalThis.UITools, globalThis.ClientApp);
-            if (clientResult && typeof clientResult.then === 'function') {
-              clientResult = await clientResult;
-            }
+            var AsyncFn = Object.getPrototypeOf(async function(){}).constructor;
+            var clientFn = new AsyncFn('UITools', 'ClientApp', finalPayload.clientScript);
+            var clientResult = await clientFn(globalThis.UITools, globalThis.ClientApp);
             if (clientResult !== undefined) {
               console.log('[Luno Client Script Result]', clientResult);
+              finalFeedback += "\n\n🖥️ CLIENT SCRIPT OUTPUT:\n" + (typeof clientResult === 'object' ? JSON.stringify(clientResult, null, 2) : String(clientResult));
             }
-          } catch(cErr) {
+          } catch (cErr) {
             console.error('[Luno Client Script Error]', cErr);
-            if (targetApp && targetApp.showToast) {
-              targetApp.showToast('Client Script Error: ' + cErr.message, 'error', '❌');
-            }
+            finalFeedback += "\n\n❌ CLIENT SCRIPT ERROR:\n" + cErr.message;
+            if (targetApp && targetApp.showToast) targetApp.showToast('Client Script Error: ' + cErr.message, 'error', '❌');
           }
         }
 
@@ -264,9 +248,7 @@ class ClientAppPaster {
         }
 
         if (targetApp && targetApp.showFeedback) {
-          targetApp.showFeedback(finalFeedback, data && data.success ? "success" : "error", {
-            fileDiffs: calculatedFileDiffs
-          });
+          targetApp.showFeedback(finalFeedback, data && data.success ? "success" : "error", { fileDiffs: calculatedFileDiffs });
         }
 
         var inboxBadge = document.getElementById('inbox-metrics-badge');
@@ -276,20 +258,15 @@ class ClientAppPaster {
 
         if (data && data.success) {
           if (input) input.value = "";
-
           if (typeof LunoHistoryManager !== 'undefined' && calculatedFileDiffs.length > 0) {
             LunoHistoryManager.recordChanges(calculatedFileDiffs, targetProj).catch(function() {});
           }
-
           if (typeof LunoLoader !== 'undefined' && LunoLoader.applyPatchLog) {
             await LunoLoader.applyPatchLog(targetProj);
           }
-
           if (typeof ClientApp !== 'undefined' && ClientApp.fetchCodebaseMetrics) {
             await ClientApp.fetchCodebaseMetrics(targetProj);
           }
-
-          // Automatic Git Conflict Closure: If this project had an active merge conflict, auto-commit resolution
           if (targetProj && typeof fetch !== 'undefined') {
             fetch('/api/git/conflicts?project=' + encodeURIComponent(targetProj))
               .then(r => r.json())
@@ -303,11 +280,10 @@ class ClientAppPaster {
                     if (res && res.success && targetApp && targetApp.showToast) {
                       targetApp.showToast(`🎉 Closed and committed Git conflict for [${targetProj}]!`, 'success', '✓');
                     }
-                  }).catch(()=>{});
+                  }).catch(() => {});
                 }
-              }).catch(()=>{});
+              }).catch(() => {});
           }
-
           if (targetApp && targetApp.showToast) {
             var toastDiff = calculatedFileDiffs.length > 0 ? (' (+' + totalAdd + '/-' + totalRem + ' LOC)') : '';
             var actionLabel = finalPayload.serverScript ? 'Executed server script' : 'Saved ' + (data.modifiedCount || data.count || 0) + ' file(s)';

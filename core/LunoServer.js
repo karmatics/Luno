@@ -496,165 +496,197 @@ class LunoServer {
   }
 
   static handleDeploy(req, res, url) {
-        let body = '';
-        req.on('data', chunk => { body += chunk; });
-        req.on('end', () => {
+      const https = require('https');
+      let body = '';
+      req.on('data', chunk => { body += chunk; });
+      req.on('end', async () => {
+        try {
+          let commitMsg = 'Automated deployment from Luno Workspace';
+          let targetProj = (url && url.searchParams && url.searchParams.get('project')) || '';
+          let deployToPages = true;
+          let clientToken = '';
+
           try {
-            let commitMsg = 'Automated deployment from Luno Workspace';
-            let targetProj = (url && url.searchParams && url.searchParams.get('project')) || '';
-            let deployToPages = true;
-            let clientToken = '';
+            const parsed = JSON.parse(body || '{}');
+            if (parsed.commitMsg) commitMsg = parsed.commitMsg;
+            if (parsed.project) targetProj = parsed.project;
+            if (parsed.deployToPages !== undefined) deployToPages = Boolean(parsed.deployToPages);
+            if (parsed.token) clientToken = parsed.token;
+          } catch (e) {}
 
-            try {
-              const parsed = JSON.parse(body || '{}');
-              if (parsed.commitMsg) commitMsg = parsed.commitMsg;
-              if (parsed.project) targetProj = parsed.project;
-              if (parsed.deployToPages !== undefined) deployToPages = Boolean(parsed.deployToPages);
-              if (parsed.token) clientToken = parsed.token;
-            } catch(e) {}
+          const targetDir = LunoServer.resolveProjectBaseDir(targetProj);
+          let output = '';
 
-            const targetDir = LunoServer.resolveProjectBaseDir(targetProj);
-            let output = '';
+          if (!fs.existsSync(targetDir)) {
+            return LunoServer.sendJSON(res, 404, { success: false, error: 'Project directory not found: ' + targetDir });
+          }
 
-            if (!fs.existsSync(targetDir)) {
-              return LunoServer.sendJSON(res, 404, { success: false, error: 'Project directory not found: ' + targetDir });
+          const pName = path.basename(targetDir);
+          const remoteName = pName;
+          let account = (typeof LunoDeployEngine !== 'undefined' && LunoDeployEngine.getGithubAccount)
+            ? LunoDeployEngine.getGithubAccount()
+            : 'karmatics';
+
+          try {
+            const lunoJsonPath = path.join(LunoServer.getRootDir(), 'luno.json');
+            if (fs.existsSync(lunoJsonPath)) {
+              const lMeta = JSON.parse(fs.readFileSync(lunoJsonPath, 'utf8'));
+              if (lMeta.githubAccount) account = lMeta.githubAccount;
             }
+          } catch (e) {}
 
-            const pName = path.basename(targetDir);
-            let remoteName = pName;
-            let account = (typeof LunoDeployEngine !== 'undefined' && LunoDeployEngine.getGithubAccount) 
-              ? LunoDeployEngine.getGithubAccount() 
-              : 'karmatics';
+          const noJekyllPath = path.join(targetDir, '.nojekyll');
+          if (!fs.existsSync(noJekyllPath)) {
+            try { fs.writeFileSync(noJekyllPath, '', 'utf8'); } catch (e) {}
+          }
 
-            try {
-              const lunoJsonPath = path.join(LunoServer.getRootDir(), 'luno.json');
-              if (fs.existsSync(lunoJsonPath)) {
-                const lMeta = JSON.parse(fs.readFileSync(lunoJsonPath, 'utf8'));
-                if (lMeta.githubAccount) account = lMeta.githubAccount;
-              }
-            } catch (e) {}
+          if (!fs.existsSync(path.join(targetDir, '.git'))) {
+            try { execSync('git init -b main', { cwd: targetDir, encoding: 'utf8' }); } catch (e) {}
+          }
 
-            // CRITICAL FOR GITHUB PAGES: Ensure .nojekyll exists so files and folders aren't ignored
-            const noJekyllPath = path.join(targetDir, '.nojekyll');
-            if (!fs.existsSync(noJekyllPath)) {
-              try { fs.writeFileSync(noJekyllPath, '', 'utf8'); } catch (e) {}
-            }
+          const lockFile = path.join(targetDir, '.git', 'index.lock');
+          if (fs.existsSync(lockFile)) {
+            try { fs.unlinkSync(lockFile); } catch (e) {}
+          }
 
-            if (!fs.existsSync(path.join(targetDir, '.git'))) {
-              try {
-                execSync('git init -b main', { cwd: targetDir, encoding: 'utf8' });
-              } catch(e) {}
-            }
+          const tokInfo = LunoServer.resolveGithubToken(clientToken);
+          const token = tokInfo.token;
 
-            const lockFile = path.join(targetDir, '.git', 'index.lock');
-            if (fs.existsSync(lockFile)) {
-              try { fs.unlinkSync(lockFile); } catch(e){}
-            }
-
-            let token = clientToken || process.env.GITHUB_TOKEN || process.env.GH_TOKEN || '';
-            if (!token) {
-              const ghHostsPath = path.join(process.env.HOME || '', '.config', 'gh', 'hosts.yml');
-              if (fs.existsSync(ghHostsPath)) {
-                try {
-                  const m = fs.readFileSync(ghHostsPath, 'utf8').match(/oauth_token:\s*([^\s]+)/);
-                  if (m) token = m[1].trim();
-                } catch(e) {}
-              }
-            }
-
-            let currentRemote = '';
-            try {
-              currentRemote = execSync('git remote get-url origin 2>&1', { cwd: targetDir, encoding: 'utf8' }).trim();
-            } catch(e) {}
-
-            const sshRemoteUrl = `git@github.com:${account}/${remoteName}.git`;
-            const httpsAuthUrl = token ? `https://${token}@github.com/${account}/${remoteName}.git` : `https://github.com/${account}/${remoteName}.git`;
-
-            if (!currentRemote || currentRemote.includes('fatal:')) {
-              const chosenRemote = token ? httpsAuthUrl : sshRemoteUrl;
-              try {
-                execSync(`git remote add origin ${chosenRemote}`, { cwd: targetDir, encoding: 'utf8' });
-              } catch(e) {}
-            }
-
-            const envOpts = {
-              cwd: targetDir,
-              encoding: 'utf8',
-              timeout: 30000,
-              env: Object.assign({}, process.env, {
-                GIT_SSH_COMMAND: 'ssh -o StrictHostKeyChecking=accept-new -o ConnectTimeout=8'
-              })
+          const ghApi = (method, apiPath, bodyObj) => new Promise((resolve) => {
+            if (!token) return resolve({ status: 0 });
+            const payload = bodyObj ? JSON.stringify(bodyObj) : null;
+            const headers = {
+              'User-Agent': 'Luno-Deploy-Engine',
+              'Accept': 'application/vnd.github+json',
+              'Authorization': `Bearer ${token}`
             };
+            if (payload) {
+              headers['Content-Type'] = 'application/json';
+              headers['Content-Length'] = Buffer.byteLength(payload);
+            }
+            const r = https.request({ hostname: 'api.github.com', path: apiPath, method, headers, timeout: 7000 }, (resp) => {
+              let d = '';
+              resp.on('data', c => d += c);
+              resp.on('end', () => {
+                let json = null;
+                try { json = JSON.parse(d); } catch (e) {}
+                resolve({ status: resp.statusCode, json, raw: d });
+              });
+            });
+            r.on('timeout', () => { r.destroy(); resolve({ status: 0 }); });
+            r.on('error', () => resolve({ status: 0 }));
+            if (payload) r.write(payload);
+            r.end();
+          });
 
+          let currentRemote = '';
+          try {
+            currentRemote = execSync('git remote get-url origin 2>&1', { cwd: targetDir, encoding: 'utf8' }).trim();
+          } catch (e) {}
+
+          const sshRemoteUrl = `git@github.com:${account}/${remoteName}.git`;
+          const httpsAuthUrl = token ? `https://${token}@github.com/${account}/${remoteName}.git` : `https://github.com/${account}/${remoteName}.git`;
+
+          if (!currentRemote || currentRemote.includes('fatal:')) {
+            try { execSync(`git remote add origin ${token ? httpsAuthUrl : sshRemoteUrl}`, { cwd: targetDir, encoding: 'utf8' }); } catch (e) {}
+          } else if (!token && currentRemote.startsWith('https://github.com/')) {
+            try { execSync(`git remote set-url origin ${sshRemoteUrl}`, { cwd: targetDir, encoding: 'utf8' }); } catch (e) {}
+          }
+
+          const envOpts = {
+            cwd: targetDir,
+            encoding: 'utf8',
+            timeout: 30000,
+            env: Object.assign({}, process.env, {
+              GIT_SSH_COMMAND: 'ssh -o StrictHostKeyChecking=accept-new -o ConnectTimeout=8'
+            })
+          };
+
+          try {
+            output += '$ git add -A\n';
             try {
-              output += '$ git add -A\n';
-              try {
-                execSync('git add -A', envOpts);
-                const stagedStatus = execSync('git status --short', envOpts);
-                if (stagedStatus && stagedStatus.trim()) {
-                  output += stagedStatus.trim() + '\n';
-                }
-              } catch(addErr) {
-                output += (addErr.stdout || '') + (addErr.stderr || '') + '\n';
-              }
+              execSync('git add -A', envOpts);
+              const stagedStatus = execSync('git status --short', envOpts);
+              if (stagedStatus && stagedStatus.trim()) output += stagedStatus.trim() + '\n';
+            } catch (addErr) {
+              output += (addErr.stdout || '') + (addErr.stderr || '') + '\n';
+            }
 
-              const safeCommitMsg = commitMsg.replace(/"/g, '\\"');
-              output += '\n$ git commit -m "' + safeCommitMsg + '" --allow-empty\n';
-              try {
-                const commitRes = execSync('git commit -m "' + safeCommitMsg + '" --allow-empty 2>&1', envOpts) || '';
-                output += commitRes.trim() + '\n';
-              } catch(commitErr) {
-                output += ((commitErr.stdout || '') + (commitErr.stderr || '')).trim() + '\n';
-              }
+            const safeCommitMsg = commitMsg.replace(/"/g, '\\"');
+            output += '\n$ git commit -m "' + safeCommitMsg + '" --allow-empty\n';
+            try {
+              const commitRes = execSync('git commit -m "' + safeCommitMsg + '" --allow-empty 2>&1', envOpts) || '';
+              output += commitRes.trim() + '\n';
+            } catch (commitErr) {
+              output += ((commitErr.stdout || '') + (commitErr.stderr || '')).trim() + '\n';
+            }
 
-              if (deployToPages) {
-                output += '\n$ git push origin main\n';
-                let pushSuccess = false;
-
-                // Primary push attempt
-                try {
-                  const pushOut = execSync('git push origin main 2>&1', envOpts) || '';
-                  output += (pushOut.trim() || 'Everything up-to-date') + '\n';
-                  pushSuccess = true;
-                } catch(pushErr) {
-                  const errDetail = (pushErr.stdout || '') + (pushErr.stderr || pushErr.message || '');
-                  output += errDetail.trim() + '\n';
-
-                  // If SSH push failed and a token is available, retry with authenticated HTTPS
-                  if (token && (errDetail.includes('Permission denied') || errDetail.includes('Could not read from remote'))) {
-                    try {
-                      output += '⚠️ Retrying push via authenticated HTTPS token...\n';
-                      execSync(`git remote set-url origin https://${token}@github.com/${account}/${remoteName}.git`, envOpts);
-                      const tokenPush = execSync('git push origin main 2>&1', envOpts) || '';
-                      output += (tokenPush.trim() || 'Push succeeded') + '\n';
-                      pushSuccess = true;
-                    } catch(tErr) {
-                      output += ((tErr.stdout || '') + (tErr.stderr || tErr.message || '')).trim() + '\n';
-                    }
+            if (deployToPages) {
+              if (token) {
+                output += `🔑 GitHub API token resolved via [${tokInfo.source}]\n`;
+                const repoCheck = await ghApi('GET', `/repos/${account}/${remoteName}`);
+                if (repoCheck.status === 404) {
+                  const created = await ghApi('POST', '/user/repos', { name: remoteName, private: false });
+                  if (created.status === 201 || created.status === 200) {
+                    output += `✨ Created public GitHub repository: ${account}/${remoteName}\n`;
+                  } else {
+                    output += `⚠️ Repo creation HTTP ${created.status}: ${(created.raw || '').slice(0, 140)}\n`;
                   }
                 }
-
-                const liveUrl = `https://${account.toLowerCase()}.github.io/${remoteName}/`;
-                output += `\n🌐 Live Pages URL: ${liveUrl}\n`;
               }
 
-              return LunoServer.sendJSON(res, 200, {
-                success: true,
-                project: pName,
-                deployToPages: deployToPages,
-                output: output.trim()
-              });
-            } catch (gitErr) {
-              const errDetail = (gitErr.stdout || '') + '\n' + (gitErr.stderr || gitErr.message);
-              return LunoServer.sendJSON(res, 500, {
-                success: false,
-                error: errDetail.trim()
-              });
+              output += '\n$ git push -u origin main\n';
+              let pushSuccess = false;
+              try {
+                const pushOut = execSync('git push -u origin main 2>&1', envOpts) || '';
+                output += (pushOut.trim() || 'Everything up-to-date') + '\n';
+                pushSuccess = true;
+              } catch (pushErr) {
+                const errDetail = (pushErr.stdout || '') + (pushErr.stderr || pushErr.message || '');
+                output += errDetail.trim() + '\n';
+                if (token && (errDetail.includes('Permission denied') || errDetail.includes('Could not read from remote') || errDetail.includes('Repository not found'))) {
+                  try {
+                    output += '⚠️ Retrying push via authenticated HTTPS token...\n';
+                    execSync(`git remote set-url origin https://${token}@github.com/${account}/${remoteName}.git`, envOpts);
+                    const tokenPush = execSync('git push -u origin main 2>&1', envOpts) || '';
+                    output += (tokenPush.trim() || 'Push succeeded') + '\n';
+                    pushSuccess = true;
+                  } catch (tErr) {
+                    output += ((tErr.stdout || '') + (tErr.stderr || tErr.message || '')).trim() + '\n';
+                  }
+                }
+              }
+
+              if (pushSuccess && token) {
+                const pagesCheck = await ghApi('GET', `/repos/${account}/${remoteName}/pages`);
+                if (pagesCheck.status === 404) {
+                  const pagesEnable = await ghApi('POST', `/repos/${account}/${remoteName}/pages`, { source: { branch: 'main', path: '/' } });
+                  if (pagesEnable.status === 201 || pagesEnable.status === 200 || pagesEnable.status === 409) {
+                    output += `🚀 Enabled GitHub Pages on branch main / (root)\n`;
+                  }
+                }
+              }
+
+              const liveUrl = `https://${account.toLowerCase()}.github.io/${remoteName}/`;
+              output += `\n🌐 Live Pages URL: ${liveUrl}\n`;
             }
-          } catch (err) {
-            return LunoServer.sendJSON(res, 400, { success: false, error: err.message });
+
+            return LunoServer.sendJSON(res, 200, {
+              success: true,
+              project: pName,
+              deployToPages,
+              hasToken: Boolean(token),
+              tokenSource: tokInfo.source,
+              output: output.trim()
+            });
+          } catch (gitErr) {
+            const errDetail = (gitErr.stdout || '') + '\n' + (gitErr.stderr || gitErr.message);
+            return LunoServer.sendJSON(res, 500, { success: false, error: errDetail.trim() });
           }
-        });
+        } catch (err) {
+          return LunoServer.sendJSON(res, 400, { success: false, error: err.message });
+        }
+      });
     }
   
   static handleProjectsList(req, res) {
@@ -2051,6 +2083,94 @@ static serveIndex(req, res) {
           return LunoServer.sendJSON(res, 500, { success: false, error: e.message });
         }
       });
+    }
+
+  static resolveGithubToken(clientToken = '') {
+      if (clientToken && clientToken.trim()) {
+        return { token: clientToken.trim(), source: 'luno-client-ui' };
+      }
+      if (process.env.GITHUB_TOKEN || process.env.GH_TOKEN) {
+        return { token: (process.env.GITHUB_TOKEN || process.env.GH_TOKEN).trim(), source: 'process-env' };
+      }
+
+      const home = process.env.HOME || '';
+      const extraPath = '/opt/homebrew/bin:/usr/local/bin:' + (process.env.PATH || '');
+      const execOpts = {
+        encoding: 'utf8',
+        timeout: 2500,
+        stdio: ['pipe', 'pipe', 'pipe'],
+        env: Object.assign({}, process.env, { PATH: extraPath, GIT_TERMINAL_PROMPT: '0' })
+      };
+
+      // 1. Check gh CLI (including Apple Silicon /opt/homebrew/bin/gh)
+      for (const ghBin of ['/opt/homebrew/bin/gh', '/usr/local/bin/gh', 'gh']) {
+        try {
+          const tok = execSync(`${ghBin} auth token`, execOpts).trim();
+          if (tok && tok.length > 10) return { token: tok, source: ghBin };
+        } catch (e) {}
+      }
+
+      // 2. Check ~/.config/gh/hosts.yml
+      const ghHostsPath = path.join(home, '.config', 'gh', 'hosts.yml');
+      if (fs.existsSync(ghHostsPath)) {
+        try {
+          const m = fs.readFileSync(ghHostsPath, 'utf8').match(/oauth_token:\s*([^\s]+)/);
+          if (m && m[1]) return { token: m[1].trim(), source: 'gh-hosts-yml' };
+        } catch (e) {}
+      }
+
+      // 3. Check ~/.config/secrets/*, ~/.config/credentials/*, ~/.git-credentials
+      const secretDirs = [path.join(home, '.config', 'secrets'), path.join(home, '.config', 'credentials')];
+      for (const sDir of secretDirs) {
+        if (fs.existsSync(sDir)) {
+          try {
+            for (const fname of fs.readdirSync(sDir)) {
+              const full = path.join(sDir, fname);
+              if (fs.statSync(full).isFile()) {
+                const txt = fs.readFileSync(full, 'utf8');
+                const m = txt.match(/(?:GITHUB_TOKEN|GH_TOKEN|GITHUB_PAT)\s*=\s*["']?([^\s"']+)["']?/) ||
+                          txt.match(/\b(ghp_[A-Za-z0-9_]{20,}|github_pat_[A-Za-z0-9_]{20,})\b/);
+                if (m && m[1]) return { token: m[1].trim(), source: `file:${fname}` };
+              }
+            }
+          } catch (e) {}
+        }
+      }
+
+      const gitCredsPath = path.join(home, '.git-credentials');
+      if (fs.existsSync(gitCredsPath)) {
+        try {
+          const txt = fs.readFileSync(gitCredsPath, 'utf8');
+          const m = txt.match(/https:\/\/[^:]+:([^@]+)@github\.com/);
+          if (m && m[1]) return { token: m[1].trim(), source: 'git-credentials' };
+        } catch (e) {}
+      }
+
+      // 4. Check git credential fill
+      try {
+        const filled = execSync('git credential fill', Object.assign({}, execOpts, {
+          input: 'protocol=https\nhost=github.com\n\n'
+        }));
+        const pm = filled.match(/password=([^\r\n]+)/);
+        if (pm && pm[1]) return { token: pm[1].trim(), source: 'git-credential-fill' };
+      } catch (e) {}
+
+      // 5. Check macOS Keychain
+      if (process.platform === 'darwin') {
+        for (const cmd of [
+          '/usr/bin/security find-generic-password -s "gh:github.com" -w',
+          '/usr/bin/security find-internet-password -s "github.com" -w'
+        ]) {
+          try {
+            const val = execSync(cmd, execOpts).trim();
+            if (val && (val.startsWith('gh') || val.startsWith('github_pat_') || val.length > 20)) {
+              return { token: val, source: 'macos-keychain' };
+            }
+          } catch (e) {}
+        }
+      }
+
+      return { token: '', source: 'none' };
     }
 }
 
