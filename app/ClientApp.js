@@ -48,12 +48,29 @@ class ClientApp {
     }
     return 'Luno';
   }
+
   static async init() {
       console.log('[Luno] Workspace online.');
       try {
-        // Boot dynamic CSS theme immediately so user preferences apply on load
         if (typeof LunoThemeEngine !== 'undefined' && typeof LunoThemeEngine.applyDynamicTheme === 'function') {
           LunoThemeEngine.applyDynamicTheme();
+        }
+
+        if (!ClientApp._outboxMessageListenerBound) {
+          ClientApp._outboxMessageListenerBound = true;
+          window.addEventListener('message', (event) => {
+            const d = event && event.data;
+            if (!d || d.type !== 'LUNO_ADD_OUTBOX_BUNDLE') return;
+            if (typeof OutboxQueue !== 'undefined' && typeof OutboxQueue.addBundle === 'function') {
+              OutboxQueue.addBundle(d.title || 'App Living Directives', d.payload || '', {
+                priority: d.priority || 'high',
+                type: 'directives'
+              });
+              if (typeof ClientApp.showToast === 'function') {
+                ClientApp.showToast(`Received "${d.title || 'Living Directives'}" into Outbox!`, 'success', '⚡');
+              }
+            }
+          });
         }
 
         await ClientApp.checkPing();
