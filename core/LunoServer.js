@@ -1816,7 +1816,7 @@ static serveIndex(req, res) {
                   let behindCount = 0;
                   let aheadCount = 0;
 
-                  if (doFetch && remoteUrl) {
+                  if (doFetch && remoteUrl && remoteUrl.toLowerCase().includes(`/${account.toLowerCase()}/`)) {
                     await pExec(`git fetch -q origin ${currentBranch}`, { ...envOpts, timeout: 8000 });
                     const behindRes = await pExec(`git rev-list --count HEAD..origin/${currentBranch}`, envOpts);
                     const aheadRes = await pExec(`git rev-list --count origin/${currentBranch}..HEAD`, envOpts);
@@ -1855,6 +1855,9 @@ static serveIndex(req, res) {
                 } else if (action === 'pull') {
                   if (!remoteUrl) {
                     return { name: item, action: 'pull', success: true, skipped: true, output: 'No origin remote configured' };
+                  }
+                  if (!remoteUrl.toLowerCase().includes(`/${account.toLowerCase()}/`)) {
+                    return { name: item, action: 'pull', success: true, skipped: true, output: 'External/private remote (skipped)' };
                   }
 
                   let autocommitted = false;
@@ -1898,6 +1901,9 @@ static serveIndex(req, res) {
                 } else if (action === 'push') {
                   if (!remoteUrl) {
                     return { name: item, action: 'push', success: true, skipped: true, output: 'No origin remote configured' };
+                  }
+                  if (!remoteUrl.toLowerCase().includes(`/${account.toLowerCase()}/`)) {
+                    return { name: item, action: 'push', success: true, skipped: true, output: 'External/private remote (skipped)' };
                   }
 
                   let changesCommitted = false;
