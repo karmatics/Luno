@@ -979,239 +979,257 @@ class LunoServer {
   }
 
   static async handle(req, res) {
-      try {
-        const url = new URL(req.url, 'http://' + (req.headers.host || '127.0.0.1:8080'));
-        const method = req.method.toUpperCase();
-        const webRoot = LunoServer.getWebRootDir();
+        try {
+          LunoServer.ensurePeerBeaconStarted();
+          const url = new URL(req.url, 'http://' + (req.headers.host || '127.0.0.1:8080'));
+          const method = req.method.toUpperCase();
+          const webRoot = LunoServer.getWebRootDir();
 
-        const origin = req.headers.origin;
-        if (origin) {
-          res.setHeader('Access-Control-Allow-Origin', origin);
-          res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, PUT, DELETE');
-          res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-Luno-Client, Authorization');
-          res.setHeader('Access-Control-Allow-Credentials', 'true');
-        }
-
-        if (method === 'OPTIONS') {
-          res.writeHead(204);
-          return res.end();
-        }
-
-        if (origin) {
-          const isLocal = origin.startsWith('http://localhost') ||
-                          origin.startsWith('http://127.0.0.1') ||
-                          origin.includes('192.168.') ||
-                          origin.includes('10.') ||
-                          origin.includes('.local') ||
-                          /https?:\/\/172\.(1[6-9]|2[0-9]|3[0-1])\./.test(origin);
-          if (!isLocal) {
-            res.writeHead(403, { 'Content-Type': 'application/json' });
-            return res.end(JSON.stringify({ success: false, error: 'Forbidden: non-LAN cross-origin request rejected' }));
+          const origin = req.headers.origin;
+          if (origin) {
+            res.setHeader('Access-Control-Allow-Origin', origin);
+            res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, PUT, DELETE');
+            res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-Luno-Client, Authorization');
+            res.setHeader('Access-Control-Allow-Credentials', 'true');
           }
-        }
 
-        if (method === 'GET' && url.pathname === '/api/lan-info') {
-          const os = require('os');
-          const nets = os.networkInterfaces();
-          const ipList = [];
-          for (const name of Object.keys(nets)) {
-            for (const net of nets[name]) {
-              if (net.family === 'IPv4' && !net.internal) {
-                ipList.push({ interface: name, address: net.address });
-              }
+          if (method === 'OPTIONS') {
+            res.writeHead(204);
+            return res.end();
+          }
+
+          if (origin) {
+            const isLocal = origin.startsWith('http://localhost') ||
+                            origin.startsWith('http://127.0.0.1') ||
+                            origin.includes('192.168.') ||
+                            origin.includes('10.') ||
+                            origin.includes('.local') ||
+                            origin === 'https://karmatics.github.io' ||
+                            /https?:\/\/172\.(1[6-9]|2[0-9]|3[0-1])\./.test(origin);
+            if (!isLocal) {
+              res.writeHead(403, { 'Content-Type': 'application/json' });
+              return res.end(JSON.stringify({ success: false, error: 'Forbidden: non-LAN cross-origin request rejected' }));
             }
           }
-          const platform = os.platform();
-          const isMac = platform === 'darwin';
-          const isLinux = platform === 'linux';
-          const suggestedPeer = isMac ? '10.0.0.245' : '10.0.0.226';
 
-          return LunoServer.sendJSON(res, 200, {
-            hostname: os.hostname(),
-            platform: platform,
-            isMac,
-            isLinux,
-            ips: ipList,
-            primaryIp: ipList[0]?.address || '127.0.0.1',
-            port: process.env.PORT || 8080,
-            suggestedPeer: suggestedPeer,
-            peerUrl: `http://${suggestedPeer}:8080`,
-            rootDir: LunoServer.getRootDir(),
-            webRootDir: LunoServer.getWebRootDir()
-          });
-        }
+          if (method === 'GET' && url.pathname === '/api/peer/discover') {
+            return await LunoServer.handlePeerDiscover(req, res);
+          }
 
-        if (method === 'GET' && url.pathname === '/api/fleet/manifest') {
-          const items = fs.readdirSync(webRoot);
-          const manifest = {};
-          for (const item of items) {
-            if (item.startsWith('.') || item.startsWith('_') || item === 'node_modules') continue;
-            const pDir = path.join(webRoot, item);
-            try {
-              if (fs.statSync(pDir).isDirectory()) {
-                const files = {};
-                function scan(dir, rel = '') {
-                  for (const f of fs.readdirSync(dir)) {
-                    if (f.startsWith('.') || f === 'node_modules' || f.endsWith('.bak')) continue;
-                    const fPath = path.join(dir, f);
-                    const curRel = rel ? (rel + '/' + f) : f;
-                    const st = fs.statSync(fPath);
-                    if (st.isDirectory()) scan(fPath, curRel);
-                    else if (st.isFile()) files[curRel] = { size: st.size, mtime: st.mtimeMs };
-                  }
+          if (method === 'POST' && url.pathname === '/api/peer/register') {
+            return LunoServer.handlePeerRegister(req, res);
+          }
+
+          if (method === 'GET' && url.pathname === '/api/peer/list') {
+            return LunoServer.handlePeerList(req, res);
+          }
+
+          if (method === 'POST' && url.pathname === '/api/peer/relay') {
+            return LunoServer.handlePeerRelay(req, res);
+          }
+
+          if (method === 'GET' && url.pathname === '/api/lan-info') {
+            const os = require('os');
+            const nets = os.networkInterfaces();
+            const ipList = [];
+            for (const name of Object.keys(nets)) {
+              for (const net of nets[name]) {
+                if (net.family === 'IPv4' && !net.internal) {
+                  ipList.push({ interface: name, address: net.address });
                 }
-                scan(pDir);
-                manifest[item] = { fileCount: Object.keys(files).length, files };
               }
-            } catch(e) {}
+            }
+            const platform = os.platform();
+            const isMac = platform === 'darwin';
+            const isLinux = platform === 'linux';
+            const suggestedPeer = isMac ? '10.0.0.245' : '10.0.0.226';
+
+            return LunoServer.sendJSON(res, 200, {
+              hostname: os.hostname(),
+              platform: platform,
+              isMac,
+              isLinux,
+              ips: ipList,
+              primaryIp: ipList[0]?.address || '127.0.0.1',
+              port: process.env.PORT || 8080,
+              suggestedPeer: suggestedPeer,
+              peerUrl: `http://${suggestedPeer}:8080`,
+              rootDir: LunoServer.getRootDir(),
+              webRootDir: LunoServer.getWebRootDir()
+            });
           }
-          return LunoServer.sendJSON(res, 200, { success: true, host: require('os').hostname(), manifest });
-        }
 
-        if (method === 'GET' && (url.pathname === '/setup-linux.sh' || url.pathname === '/api/setup-linux')) {
-          res.writeHead(200, { 'Content-Type': 'text/x-shellscript; charset=utf-8', 'Cache-Control': 'no-cache' });
-          return res.end(LunoServer.getLinuxSetupScript(req));
-        }
-
-        if (method === 'GET' && (url.pathname === '/' || url.pathname === '/index.html' || url.pathname === '/full' || url.pathname === '/ui/1' || url.pathname === '/ui/full')) {
-          return LunoServer.serveIndex(req, res);
-        }
-
-        if (method === 'GET' && (url.pathname === '/app-preview' || url.pathname === '/app-preview/index.html')) {
-          const targetProj = url.searchParams.get('project') || 'Luno';
-          res.writeHead(302, { 'Location': '/' + encodeURIComponent(targetProj) + '/' });
-          return res.end();
-        }
-
-        const pathParts = url.pathname.split('/').filter(Boolean);
-        const firstSegment = pathParts[0] || '';
-        const isSystemRoute = ['api', 'assets', 'app', 'core', 'browser', 'docs', 'test', 'library'].includes(firstSegment.toLowerCase());
-
-        if (!isSystemRoute && firstSegment) {
-          const candidateProjDir = path.join(webRoot, firstSegment);
-          if (fs.existsSync(candidateProjDir) && fs.statSync(candidateProjDir).isDirectory()) {
-            if (url.pathname === '/' + firstSegment) {
-              res.writeHead(301, { 'Location': '/' + firstSegment + '/' + (url.search || '') });
-              return res.end();
+          if (method === 'GET' && url.pathname === '/api/fleet/manifest') {
+            const items = fs.readdirSync(webRoot);
+            const manifest = {};
+            for (const item of items) {
+              if (item.startsWith('.') || item.startsWith('_') || item === 'node_modules') continue;
+              const pDir = path.join(webRoot, item);
+              try {
+                if (fs.statSync(pDir).isDirectory()) {
+                  const files = {};
+                  function scan(dir, rel = '') {
+                    for (const f of fs.readdirSync(dir)) {
+                      if (f.startsWith('.') || f === 'node_modules' || f.endsWith('.bak')) continue;
+                      const fPath = path.join(dir, f);
+                      const curRel = rel ? (rel + '/' + f) : f;
+                      const st = fs.statSync(fPath);
+                      if (st.isDirectory()) scan(fPath, curRel);
+                      else if (st.isFile()) files[curRel] = { size: st.size, mtime: st.mtimeMs };
+                    }
+                  }
+                  scan(pDir);
+                  manifest[item] = { fileCount: Object.keys(files).length, files };
+                }
+              } catch(e) {}
             }
+            return LunoServer.sendJSON(res, 200, { success: true, host: require('os').hostname(), manifest });
+          }
 
-            if (url.pathname === '/' + firstSegment + '/' || url.pathname === '/' + firstSegment + '/index.html') {
-              const indexFile = path.join(candidateProjDir, 'index.html');
-              if (fs.existsSync(indexFile)) {
-                res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-cache' });
-                return res.end(fs.readFileSync(indexFile));
+          if (method === 'GET' && (url.pathname === '/setup-linux.sh' || url.pathname === '/api/setup-linux')) {
+            res.writeHead(200, { 'Content-Type': 'text/x-shellscript; charset=utf-8', 'Cache-Control': 'no-cache' });
+            return res.end(LunoServer.getLinuxSetupScript(req));
+          }
+
+          if (method === 'GET' && (url.pathname === '/' || url.pathname === '/index.html' || url.pathname === '/full' || url.pathname === '/ui/1' || url.pathname === '/ui/full')) {
+            return LunoServer.serveIndex(req, res);
+          }
+
+          if (method === 'GET' && (url.pathname === '/app-preview' || url.pathname === '/app-preview/index.html')) {
+            const targetProj = url.searchParams.get('project') || 'Luno';
+            res.writeHead(302, { 'Location': '/' + encodeURIComponent(targetProj) + '/' });
+            return res.end();
+          }
+
+          const pathParts = url.pathname.split('/').filter(Boolean);
+          const firstSegment = pathParts[0] || '';
+          const isSystemRoute = ['api', 'assets', 'app', 'core', 'browser', 'docs', 'test', 'library'].includes(firstSegment.toLowerCase());
+
+          if (!isSystemRoute && firstSegment) {
+            const candidateProjDir = path.join(webRoot, firstSegment);
+            if (fs.existsSync(candidateProjDir) && fs.statSync(candidateProjDir).isDirectory()) {
+              if (url.pathname === '/' + firstSegment) {
+                res.writeHead(301, { 'Location': '/' + firstSegment + '/' + (url.search || '') });
+                return res.end();
               }
-            }
 
-            const relativeAsset = pathParts.slice(1).join('/');
-            if (relativeAsset) {
-              const directFile = path.join(candidateProjDir, relativeAsset);
-              if (fs.existsSync(directFile) && fs.statSync(directFile).isFile()) {
-                return LunoServer.serveAsset(req, res, path.relative(webRoot, directFile));
+              if (url.pathname === '/' + firstSegment + '/' || url.pathname === '/' + firstSegment + '/index.html') {
+                const indexFile = path.join(candidateProjDir, 'index.html');
+                if (fs.existsSync(indexFile)) {
+                  res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-cache' });
+                  return res.end(fs.readFileSync(indexFile));
+                }
+              }
+
+              const relativeAsset = pathParts.slice(1).join('/');
+              if (relativeAsset) {
+                const directFile = path.join(candidateProjDir, relativeAsset);
+                if (fs.existsSync(directFile) && fs.statSync(directFile).isFile()) {
+                  return LunoServer.serveAsset(req, res, path.relative(webRoot, directFile));
+                }
               }
             }
           }
-        }
 
-        if (method === 'GET' && url.pathname === '/api/ping') {
-          const platform = require('os').platform();
-          return LunoServer.sendJSON(res, 200, {
-            status: "online",
-            pid: process.pid,
-            platform: platform,
-            isMac: platform === 'darwin',
-            isLinux: platform === 'linux',
-            suggestedPeer: platform === 'darwin' ? '10.0.0.245' : '10.0.0.226',
-            rootDir: LunoServer.getRootDir(),
-            version: LunoServer.VERSION
-          });
-        }
+          if (method === 'GET' && url.pathname === '/api/ping') {
+            const platform = require('os').platform();
+            return LunoServer.sendJSON(res, 200, {
+              status: "online",
+              pid: process.pid,
+              hostname: require('os').hostname(),
+              platform: platform,
+              isMac: platform === 'darwin',
+              isLinux: platform === 'linux',
+              suggestedPeer: platform === 'darwin' ? '10.0.0.245' : '10.0.0.226',
+              rootDir: LunoServer.getRootDir(),
+              version: LunoServer.VERSION
+            });
+          }
 
-        if (method === 'GET' && url.pathname === '/api/projects/list') {
-          return LunoServer.handleProjectsList(req, res);
-        }
+          if (method === 'GET' && url.pathname === '/api/projects/list') {
+            return LunoServer.handleProjectsList(req, res);
+          }
 
-        if (method === 'POST' && url.pathname === '/api/projects/fork') {
-          return LunoServer.handleForkProject(req, res);
-        }
+          if (method === 'POST' && url.pathname === '/api/projects/fork') {
+            return LunoServer.handleForkProject(req, res);
+          }
 
-        if (method === 'GET' && url.pathname === '/api/fs/ls') {
-          return LunoServer.handleFsLs(req, res, url);
-        }
+          if (method === 'GET' && url.pathname === '/api/fs/ls') {
+            return LunoServer.handleFsLs(req, res, url);
+          }
 
-        if (method === 'GET' && url.pathname === '/api/fs/read') {
-          return LunoServer.handleFsRead(req, res, url);
-        }
+          if (method === 'GET' && url.pathname === '/api/fs/read') {
+            return LunoServer.handleFsRead(req, res, url);
+          }
 
-        if (method === 'GET' && (url.pathname === '/api/all-code' || url.pathname === '/api/all-code/')) {
-          return LunoServer.handleAllCode(req, res, url);
-        }
+          if (method === 'GET' && (url.pathname === '/api/all-code' || url.pathname === '/api/all-code/')) {
+            return LunoServer.handleAllCode(req, res, url);
+          }
 
-        if (method === 'GET' && url.pathname === '/api/git/file-diff') {
-          return LunoServer.handleGitFileDiff(req, res, url);
-        }
+          if (method === 'GET' && url.pathname === '/api/git/file-diff') {
+            return LunoServer.handleGitFileDiff(req, res, url);
+          }
 
-        if (method === 'GET' && url.pathname === '/api/git/log') {
-          return LunoServer.handleGitLog(req, res, url);
-        }
+          if (method === 'GET' && url.pathname === '/api/git/log') {
+            return LunoServer.handleGitLog(req, res, url);
+          }
 
-        if (method === 'GET' && url.pathname === '/api/git/commit') {
-          return LunoServer.handleGitCommitDetails(req, res, url);
-        }
+          if (method === 'GET' && url.pathname === '/api/git/commit') {
+            return LunoServer.handleGitCommitDetails(req, res, url);
+          }
 
-        // Conflict detection and resolution endpoints
-        if (method === 'GET' && url.pathname === '/api/git/conflicts') {
-          return LunoServer.handleGitConflicts(req, res, url);
-        }
+          if (method === 'GET' && url.pathname === '/api/git/conflicts') {
+            return LunoServer.handleGitConflicts(req, res, url);
+          }
 
-        if (method === 'POST' && url.pathname === '/api/git/resolve-conflict') {
-          return LunoServer.handleGitResolveConflict(req, res, url);
-        }
+          if (method === 'POST' && url.pathname === '/api/git/resolve-conflict') {
+            return LunoServer.handleGitResolveConflict(req, res, url);
+          }
 
-        if (method === 'POST' && url.pathname === '/api/git/pull') {
-          return LunoServer.handleGitPull(req, res, url);
-        }
+          if (method === 'POST' && url.pathname === '/api/git/pull') {
+            return LunoServer.handleGitPull(req, res, url);
+          }
 
-        if (method === 'POST' && (url.pathname === '/api/git/fleet-sync' || url.pathname === '/api/deploy/all')) {
-          return LunoServer.handleFleetSync(req, res, url);
-        }
+          if (method === 'POST' && (url.pathname === '/api/git/fleet-sync' || url.pathname === '/api/deploy/all')) {
+            return LunoServer.handleFleetSync(req, res, url);
+          }
 
-        if (method === 'POST' && url.pathname === '/api/fs/set-root') {
-          return LunoServer.handleSetRoot(req, res);
-        }
+          if (method === 'POST' && url.pathname === '/api/fs/set-root') {
+            return LunoServer.handleSetRoot(req, res);
+          }
 
-        if (method === 'POST' && url.pathname === '/api/context/request') {
-          return LunoServer.handleContextRequest(req, res, url);
-        }
+          if (method === 'POST' && url.pathname === '/api/context/request') {
+            return LunoServer.handleContextRequest(req, res, url);
+          }
 
-        if (method === 'POST' && url.pathname === '/api/deploy') {
-          return LunoServer.handleDeploy(req, res, url);
-        }
+          if (method === 'POST' && url.pathname === '/api/deploy') {
+            return LunoServer.handleDeploy(req, res, url);
+          }
 
-        if (method === 'POST' && url.pathname === '/api/save') {
-          let b = '';
-          const projectParam = url.searchParams.get('project') || '';
-          req.on('data', c => { b += c; });
-          req.on('end', async () => {
-            try {
-              const r = await LunoServer.parseAndSaveFiles(b, projectParam);
-              LunoServer.sendJSON(res, 200, r);
-            } catch(e) {
-              LunoServer.sendJSON(res, 400, { success: false, error: e.message });
-            }
-          });
-          return;
-        }
+          if (method === 'POST' && url.pathname === '/api/save') {
+            let b = '';
+            const projectParam = url.searchParams.get('project') || '';
+            req.on('data', c => { b += c; });
+            req.on('end', async () => {
+              try {
+                const r = await LunoServer.parseAndSaveFiles(b, projectParam);
+                LunoServer.sendJSON(res, 200, r);
+              } catch(e) {
+                LunoServer.sendJSON(res, 400, { success: false, error: e.message });
+              }
+            });
+            return;
+          }
 
-        if (method === 'GET') {
-          return LunoServer.serveAsset(req, res, url.pathname.slice(1));
-        }
+          if (method === 'GET') {
+            return LunoServer.serveAsset(req, res, url.pathname.slice(1));
+          }
 
-        LunoServer.sendJSON(res, 404, { error: 'Route not found' });
-      } catch (err) {
-        LunoServer.sendJSON(res, 500, { error: err.message });
+          LunoServer.sendJSON(res, 404, { error: 'Route not found' });
+        } catch (err) {
+          LunoServer.sendJSON(res, 500, { error: err.message });
+        }
       }
-    }
 static serveIndex(req, res) {
     if (res.headersSent) return;
     const indexFile = path.join(LunoServer.getRootDir(), 'index.html');
@@ -1717,324 +1735,357 @@ static serveIndex(req, res) {
     }
 
   static async handleFleetSync(req, res, url) {
-      let body = '';
-      req.on('data', chunk => { body += chunk; });
-      req.on('end', async () => {
-        try {
-          let parsed = {};
-          try { parsed = JSON.parse(body || '{}'); } catch (e) {}
-
-          const action = (parsed.action || (url && url.searchParams && url.searchParams.get('action')) || 'status').toLowerCase();
-          const commitMsg = parsed.commitMsg || `[Fleet Sync] ${new Date().toLocaleString()}`;
-          const branch = parsed.branch || 'main';
-          const autocommit = parsed.autocommit !== false;
-          const doFetch = parsed.fetch !== false;
-          const selectedProjects = Array.isArray(parsed.projects) ? parsed.projects : null;
-          const webRoot = LunoServer.getWebRootDir();
-          const account = (typeof LunoDeployEngine !== 'undefined' && LunoDeployEngine.getGithubAccount) ? LunoDeployEngine.getGithubAccount() : 'karmatics';
-
-          if (!fs.existsSync(webRoot)) {
-            return LunoServer.sendJSON(res, 500, { success: false, error: 'Web root directory not found: ' + webRoot });
-          }
-
-          const items = fs.readdirSync(webRoot);
-          const ignored = ['node_modules', '.git', 'dist', 'build', '.checkpoints', '_claude_salvage', 'archive', 'temp', 'logs'];
-          const validRepos = [];
-
-          for (const item of items) {
-            if (item.startsWith('.') || item.startsWith('_') || ignored.includes(item.toLowerCase())) continue;
-            if (selectedProjects && !selectedProjects.includes(item)) continue;
-            const projDir = path.join(webRoot, item);
-            try {
-              if (fs.statSync(projDir).isDirectory() && fs.existsSync(path.join(projDir, '.git'))) {
-                validRepos.push(item);
-              }
-            } catch (e) {}
-          }
-
-          const { exec } = require('child_process');
-          const pExec = (cmd, opts) => new Promise((resolve) => {
-            exec(cmd, opts, (err, stdout, stderr) => {
-              resolve({ ok: !err, error: err, stdout: stdout || '', stderr: stderr || '' });
-            });
-          });
-
-          const results = [];
-          const BATCH_SIZE = 8;
-
-          for (let i = 0; i < validRepos.length; i += BATCH_SIZE) {
-            const batch = validRepos.slice(i, i + BATCH_SIZE);
-            const batchPromises = batch.map(async (item) => {
-              const projDir = path.join(webRoot, item);
-              const envOpts = {
-                cwd: projDir,
-                encoding: 'utf8',
-                timeout: 20000,
-                env: Object.assign({}, process.env, { GIT_SSH_COMMAND: 'ssh -o StrictHostKeyChecking=accept-new' })
-              };
-
-              const lockFile = path.join(projDir, '.git', 'index.lock');
-              if (fs.existsSync(lockFile)) {
-                try { fs.unlinkSync(lockFile); } catch (e) {}
-              }
-
-              const remRes = await pExec('git remote get-url origin', envOpts);
-              let remoteUrl = remRes.stdout.trim();
-              const brRes = await pExec('git branch --show-current', envOpts);
-              const currentBranch = brRes.stdout.trim() || 'main';
-
-              const stRes = await pExec('git status --short', envOpts);
-              const statusText = stRes.stdout.trim();
-              const uncommittedFiles = statusText ? statusText.split('\n').map(l => {
-                const code = l.slice(0, 2).trim();
-                const file = l.slice(3).trim().replace(/^"|"$/g, '');
-                return { code, file };
-              }) : [];
-
-              if (action === 'status') {
-                let behindCount = 0;
-                let aheadCount = 0;
-
-                if (doFetch && remoteUrl) {
-                  await pExec(`git fetch -q origin ${currentBranch}`, { ...envOpts, timeout: 6000 });
-                  const behindRes = await pExec(`git rev-list --count HEAD..origin/${currentBranch}`, envOpts);
-                  const aheadRes = await pExec(`git rev-list --count origin/${currentBranch}..HEAD`, envOpts);
-                  behindCount = parseInt(behindRes.stdout.trim() || '0', 10);
-                  aheadCount = parseInt(aheadRes.stdout.trim() || '0', 10);
-                }
-
-                return {
-                  name: item,
-                  branch: currentBranch,
-                  remoteUrl,
-                  hasUncommitted: uncommittedFiles.length > 0,
-                  uncommittedFiles,
-                  uncommittedCount: uncommittedFiles.length,
-                  behind: behindCount,
-                  ahead: aheadCount,
-                  needPull: behindCount > 0,
-                  needPush: aheadCount > 0 || uncommittedFiles.length > 0,
-                  statusText
-                };
-              } else if (action === 'commit' || action === 'commit-selected') {
-                if (uncommittedFiles.length === 0) {
-                  return { name: item, success: true, changesCommitted: false, message: 'Already clean' };
-                }
-
-                await pExec('git add -A', envOpts);
-                const commitRes = await pExec(`git commit -m "${commitMsg.replace(/"/g, '\\"')}"`, envOpts);
-
-                return {
-                  name: item,
-                  action: 'commit',
-                  success: commitRes.ok,
-                  changesCommitted: commitRes.ok,
-                  output: (commitRes.stdout || commitRes.stderr).trim()
-                };
-              } else if (action === 'pull') {
-                let autocommitted = false;
-                if (uncommittedFiles.length > 0 && autocommit) {
-                  await pExec('git add -A', envOpts);
-                  await pExec(`git commit -m "[Auto-Snapshot before Fleet Pull] ${new Date().toLocaleString()}"`, envOpts);
-                  autocommitted = true;
-                }
-
-                // Standard pull
-                let pullRes = await pExec(`git pull origin ${branch}`, envOpts);
-
-                // If pull failed due to SSH key issues, fallback to public HTTPS URL
-                if (!pullRes.ok && remoteUrl.includes('git@github.com')) {
-                  const httpsUrl = `https://github.com/${account}/${item}.git`;
-                  await pExec(`git remote set-url origin ${httpsUrl}`, envOpts);
-                  pullRes = await pExec(`git pull origin ${branch}`, envOpts);
-                }
-
-                const unmergedRes = await pExec('git diff --name-only --diff-filter=U', envOpts);
-                const conflicts = unmergedRes.stdout.trim() ? unmergedRes.stdout.trim().split('\n').filter(Boolean) : [];
-
-                return {
-                  name: item,
-                  action: 'pull',
-                  success: pullRes.ok && conflicts.length === 0,
-                  autocommitted,
-                  hasConflicts: conflicts.length > 0,
-                  conflicts,
-                  output: (pullRes.stdout || pullRes.stderr).trim() || 'Already up to date.'
-                };
-              } else if (action === 'push') {
-                let changesCommitted = false;
-                const nj = path.join(projDir, '.nojekyll');
-                if (!fs.existsSync(nj)) {
-                  try { fs.writeFileSync(nj, '', 'utf8'); } catch (e) {}
-                }
-
-                if (uncommittedFiles.length > 0) {
-                  await pExec('git add -A', envOpts);
-                  await pExec(`git commit -m "${commitMsg.replace(/"/g, '\\"')}"`, envOpts);
-                  changesCommitted = true;
-                }
-
-                const pushRes = await pExec(`git push origin ${branch}`, envOpts);
-
-                return {
-                  name: item,
-                  action: 'push',
-                  success: pushRes.ok,
-                  changesCommitted,
-                  output: (pushRes.stdout || pushRes.stderr).trim() || 'Everything up-to-date'
-                };
-              }
-            });
-
-            const batchResults = await Promise.all(batchPromises);
-            results.push(...batchResults);
-          }
-
-          const conflictCount = results.filter(r => r && r.hasConflicts).length;
-          const failedCount = results.filter(r => r && r.success === false).length;
-          const dirtyProjects = results.filter(r => r && (r.hasUncommitted || (r.uncommittedCount && r.uncommittedCount > 0)));
-
-          return LunoServer.sendJSON(res, 200, {
-            success: failedCount === 0 && conflictCount === 0,
-            action,
-            timestamp: new Date().toISOString(),
-            totalRepos: results.length,
-            hasConflicts: conflictCount > 0,
-            conflictCount,
-            failedCount,
-            dirtyCount: dirtyProjects.length,
-            dirtyProjects,
-            results
-          });
-        } catch (err) {
-          return LunoServer.sendJSON(res, 500, { success: false, error: err.message });
-        }
-      });
-    }
-
-  static handleGitPull(req, res, url) {
         let body = '';
         req.on('data', chunk => { body += chunk; });
-        req.on('end', () => {
+        req.on('end', async () => {
           try {
             let parsed = {};
-            try { parsed = JSON.parse(body || '{}'); } catch(e) {}
-            const targetProj = parsed.project || (url && url.searchParams && url.searchParams.get('project')) || 'Luno';
+            try { parsed = JSON.parse(body || '{}'); } catch (e) {}
+
+            const action = (parsed.action || (url && url.searchParams && url.searchParams.get('action')) || 'status').toLowerCase();
+            const commitMsg = parsed.commitMsg || `[Fleet Sync] ${new Date().toLocaleString()}`;
             const branch = parsed.branch || 'main';
             const autocommit = parsed.autocommit !== false;
-            const baseDir = LunoServer.resolveProjectBaseDir(targetProj);
-            const account = (typeof LunoDeployEngine !== 'undefined' && LunoDeployEngine.getGithubAccount) 
-              ? LunoDeployEngine.getGithubAccount() 
-              : 'karmatics';
-            const publicHttpsUrl = `https://github.com/${account}/${targetProj}.git`;
+            const doFetch = parsed.fetch !== false;
+            const selectedProjects = Array.isArray(parsed.projects) ? parsed.projects : null;
+            const webRoot = LunoServer.getWebRootDir();
+            const account = (typeof LunoDeployEngine !== 'undefined' && LunoDeployEngine.getGithubAccount) ? LunoDeployEngine.getGithubAccount() : 'karmatics';
 
-            // Auto-clone if missing
-            if (!fs.existsSync(baseDir)) {
+            if (!fs.existsSync(webRoot)) {
+              return LunoServer.sendJSON(res, 500, { success: false, error: 'Web root directory not found: ' + webRoot });
+            }
+
+            const items = fs.readdirSync(webRoot);
+            const ignored = ['node_modules', '.git', 'dist', 'build', '.checkpoints', '_claude_salvage', 'archive', 'temp', 'logs'];
+            const validRepos = [];
+
+            for (const item of items) {
+              if (item.startsWith('.') || item.startsWith('_') || ignored.includes(item.toLowerCase())) continue;
+              if (selectedProjects && !selectedProjects.includes(item)) continue;
+              const projDir = path.join(webRoot, item);
               try {
-                const { execSync } = require('child_process');
-                fs.mkdirSync(path.dirname(baseDir), { recursive: true });
-                const cloneOut = execSync(`git clone ${publicHttpsUrl} "${baseDir}"`, { encoding: 'utf8', timeout: 35000 });
-                return LunoServer.sendJSON(res, 200, {
-                  success: true,
-                  project: targetProj,
-                  autocommitted: false,
-                  hasConflicts: false,
-                  conflicts: [],
-                  output: `Cloned ${targetProj} fresh from GitHub:\n${cloneOut.trim()}`,
-                  statusText: ''
-                });
-              } catch(cloneErr) {
-                return LunoServer.sendJSON(res, 404, {
-                  success: false,
-                  error: `Project directory not found and auto-clone failed: ${cloneErr.message}`
-                });
-              }
+                if (fs.statSync(projDir).isDirectory() && fs.existsSync(path.join(projDir, '.git'))) {
+                  validRepos.push(item);
+                }
+              } catch (e) {}
             }
 
-            const gitDir = path.join(baseDir, '.git');
-            if (!fs.existsSync(gitDir)) {
-              try {
-                const { execSync } = require('child_process');
-                execSync('git init -b main', { cwd: baseDir, encoding: 'utf8' });
-                execSync(`git remote add origin ${publicHttpsUrl}`, { cwd: baseDir, encoding: 'utf8' });
-              } catch(e) {}
+            const { exec } = require('child_process');
+            const pExec = (cmd, opts) => new Promise((resolve) => {
+              exec(cmd, opts, (err, stdout, stderr) => {
+                resolve({ ok: !err, error: err, stdout: stdout || '', stderr: stderr || '' });
+              });
+            });
+
+            const results = [];
+            const BATCH_SIZE = 10;
+
+            for (let i = 0; i < validRepos.length; i += BATCH_SIZE) {
+              const batch = validRepos.slice(i, i + BATCH_SIZE);
+              const batchPromises = batch.map(async (item) => {
+                const projDir = path.join(webRoot, item);
+                const envOpts = {
+                  cwd: projDir,
+                  encoding: 'utf8',
+                  timeout: 12000,
+                  env: Object.assign({}, process.env, {
+                    GIT_TERMINAL_PROMPT: '0',
+                    GIT_SSH_COMMAND: 'ssh -o StrictHostKeyChecking=accept-new -o BatchMode=yes -o ConnectTimeout=5'
+                  })
+                };
+
+                const lockFile = path.join(projDir, '.git', 'index.lock');
+                if (fs.existsSync(lockFile)) {
+                  try { fs.unlinkSync(lockFile); } catch (e) {}
+                }
+
+                const remRes = await pExec('git remote get-url origin', envOpts);
+                const remoteUrl = remRes.ok ? remRes.stdout.trim() : '';
+                const brRes = await pExec('git branch --show-current', envOpts);
+                const currentBranch = brRes.stdout.trim() || 'main';
+
+                const stRes = await pExec('git status --short', envOpts);
+                const statusText = stRes.stdout.trim();
+                const uncommittedFiles = statusText ? statusText.split('\n').map(l => {
+                  const code = l.slice(0, 2).trim();
+                  const file = l.slice(3).trim().replace(/^"|"$/g, '');
+                  return { code, file };
+                }) : [];
+
+                if (action === 'status') {
+                  let behindCount = 0;
+                  let aheadCount = 0;
+
+                  if (doFetch && remoteUrl) {
+                    await pExec(`git fetch -q origin ${currentBranch}`, { ...envOpts, timeout: 6000 });
+                    const behindRes = await pExec(`git rev-list --count HEAD..origin/${currentBranch}`, envOpts);
+                    const aheadRes = await pExec(`git rev-list --count origin/${currentBranch}..HEAD`, envOpts);
+                    behindCount = parseInt(behindRes.stdout.trim() || '0', 10) || 0;
+                    aheadCount = parseInt(aheadRes.stdout.trim() || '0', 10) || 0;
+                  }
+
+                  return {
+                    name: item,
+                    branch: currentBranch,
+                    remoteUrl,
+                    hasUncommitted: uncommittedFiles.length > 0,
+                    uncommittedFiles,
+                    uncommittedCount: uncommittedFiles.length,
+                    behind: behindCount,
+                    ahead: aheadCount,
+                    needPull: behindCount > 0,
+                    needPush: Boolean(remoteUrl) && (aheadCount > 0 || uncommittedFiles.length > 0),
+                    statusText
+                  };
+                } else if (action === 'commit' || action === 'commit-selected') {
+                  if (uncommittedFiles.length === 0) {
+                    return { name: item, success: true, changesCommitted: false, message: 'Already clean' };
+                  }
+
+                  await pExec('git add -A', envOpts);
+                  const commitRes = await pExec(`git commit -m "${commitMsg.replace(/"/g, '\\"')}"`, envOpts);
+
+                  return {
+                    name: item,
+                    action: 'commit',
+                    success: commitRes.ok,
+                    changesCommitted: commitRes.ok,
+                    output: (commitRes.stdout || commitRes.stderr).trim()
+                  };
+                } else if (action === 'pull') {
+                  if (!remoteUrl) {
+                    return { name: item, action: 'pull', success: true, skipped: true, output: 'No origin remote configured' };
+                  }
+
+                  let autocommitted = false;
+                  if (uncommittedFiles.length > 0 && autocommit) {
+                    await pExec('git add -A', envOpts);
+                    await pExec(`git commit -m "[Auto-Snapshot before Fleet Pull] ${new Date().toLocaleString()}"`, envOpts);
+                    autocommitted = true;
+                  }
+
+                  const fetchRes = await pExec(`git fetch -q origin ${branch}`, envOpts);
+                  let pullRes;
+                  if (fetchRes.ok) {
+                    const behindRes = await pExec(`git rev-list --count HEAD..origin/${branch}`, envOpts);
+                    const behindCount = parseInt(behindRes.stdout.trim() || '0', 10) || 0;
+                    if (behindCount === 0) {
+                      pullRes = { ok: true, stdout: 'Already up to date.', stderr: '' };
+                    } else {
+                      pullRes = await pExec(`git pull --rebase --autostash origin ${branch}`, envOpts);
+                    }
+                  } else {
+                    const httpsPullUrl = `https://github.com/${account}/${item}.git`;
+                    pullRes = await pExec(`git pull --rebase --autostash ${httpsPullUrl} ${branch}`, envOpts);
+                  }
+
+                  const unmergedRes = await pExec('git diff --name-only --diff-filter=U', envOpts);
+                  const conflicts = unmergedRes.stdout.trim() ? unmergedRes.stdout.trim().split('\n').filter(Boolean) : [];
+
+                  return {
+                    name: item,
+                    action: 'pull',
+                    success: pullRes.ok && conflicts.length === 0,
+                    autocommitted,
+                    hasConflicts: conflicts.length > 0,
+                    conflicts,
+                    output: (pullRes.stdout || pullRes.stderr).trim() || 'Already up to date.'
+                  };
+                } else if (action === 'push') {
+                  if (!remoteUrl) {
+                    return { name: item, action: 'push', success: true, skipped: true, output: 'No origin remote configured' };
+                  }
+
+                  let changesCommitted = false;
+                  const nj = path.join(projDir, '.nojekyll');
+                  if (!fs.existsSync(nj)) {
+                    try { fs.writeFileSync(nj, '', 'utf8'); } catch (e) {}
+                  }
+
+                  if (uncommittedFiles.length > 0) {
+                    await pExec('git add -A', envOpts);
+                    await pExec(`git commit -m "${commitMsg.replace(/"/g, '\\"')}"`, envOpts);
+                    changesCommitted = true;
+                  }
+
+                  const aheadRes = await pExec(`git rev-list --count origin/${branch}..HEAD`, envOpts);
+                  const aheadCount = parseInt(aheadRes.stdout.trim() || '0', 10);
+                  if (!changesCommitted && aheadRes.ok && aheadCount === 0) {
+                    return { name: item, action: 'push', success: true, changesCommitted: false, output: 'Everything up-to-date' };
+                  }
+
+                  const pushRes = await pExec(`git push -u origin ${branch}`, envOpts);
+
+                  return {
+                    name: item,
+                    action: 'push',
+                    success: pushRes.ok,
+                    changesCommitted,
+                    output: (pushRes.stdout || pushRes.stderr).trim() || 'Everything up-to-date'
+                  };
+                }
+              });
+
+              const batchResults = await Promise.all(batchPromises);
+              results.push(...batchResults);
             }
 
-            const lockFile = path.join(baseDir, '.git', 'index.lock');
-            if (fs.existsSync(lockFile)) {
-              try { fs.unlinkSync(lockFile); } catch(e) {}
-            }
-
-            const envOpts = {
-              cwd: baseDir,
-              encoding: 'utf8',
-              timeout: 25000,
-              env: Object.assign({}, process.env, {
-                GIT_SSH_COMMAND: 'ssh -o StrictHostKeyChecking=accept-new -o ConnectTimeout=8'
-              })
-            };
-
-            const { execSync } = require('child_process');
-            let output = '';
-            let autocommitted = false;
-            let statusText = '';
-            try { statusText = execSync('git status --short', envOpts).trim(); } catch(e) {}
-
-            if (statusText && autocommit) {
-              try {
-                execSync('git add -A', envOpts);
-                execSync(`git commit -m "[Auto-Snapshot before Pull] ${new Date().toLocaleString()}"`, envOpts);
-                output += `✓ Saved local snapshot.\n`;
-                autocommitted = true;
-              } catch(cErr) {
-                output += `⚠️ Snapshot notice: ${cErr.message}\n`;
-              }
-            }
-
-            output += `$ git pull origin ${branch}\n`;
-            let pullSuccess = false;
-
-            // Attempt 1: Standard pull
-            try {
-              const pullRes = execSync(`git pull origin ${branch} 2>&1`, envOpts);
-              output += (pullRes.trim() || 'Already up to date.') + '\n';
-              pullSuccess = true;
-            } catch(pullErr) {
-              // Attempt 2: Public HTTPS fallback (zero credentials required for public repos)
-              try {
-                output += `⚠️ Retrying pull via public HTTPS (${publicHttpsUrl})...\n`;
-                execSync(`git remote set-url origin ${publicHttpsUrl}`, envOpts);
-                const retryRes = execSync(`git pull origin ${branch} 2>&1`, envOpts);
-                output += (retryRes.trim() || 'Already up to date.') + '\n';
-                pullSuccess = true;
-              } catch(retryErr) {
-                output += ((retryErr.stdout || '') + (retryErr.stderr || retryErr.message || '')).trim() + '\n';
-              }
-            }
-
-            let conflicts = [];
-            try {
-              const unmerged = execSync('git diff --name-only --diff-filter=U 2>/dev/null', envOpts).trim();
-              if (unmerged) conflicts = unmerged.split('\n').filter(Boolean);
-            } catch(e) {}
-
-            let postStatus = '';
-            try { postStatus = execSync('git status --short', envOpts).trim(); } catch(e) {}
+            const conflictCount = results.filter(r => r && r.hasConflicts).length;
+            const failedList = results.filter(r => r && r.success === false);
+            const dirtyProjects = results.filter(r => r && (r.hasUncommitted || (r.uncommittedCount && r.uncommittedCount > 0)));
 
             return LunoServer.sendJSON(res, 200, {
-              success: pullSuccess && conflicts.length === 0,
-              project: targetProj,
-              autocommitted,
-              hasConflicts: conflicts.length > 0,
-              conflicts,
-              output: output.trim(),
-              statusText: postStatus
+              success: failedList.length === 0 && conflictCount === 0,
+              action,
+              timestamp: new Date().toISOString(),
+              totalRepos: results.length,
+              hasConflicts: conflictCount > 0,
+              conflictCount,
+              failedCount: failedList.length,
+              failedRepos: failedList.map(f => ({ name: f.name, output: f.output })),
+              dirtyCount: dirtyProjects.length,
+              dirtyProjects,
+              results
             });
-          } catch(err) {
+          } catch (err) {
             return LunoServer.sendJSON(res, 500, { success: false, error: err.message });
           }
         });
-    }
+      }
+
+  static handleGitPull(req, res, url) {
+          let body = '';
+          req.on('data', chunk => { body += chunk; });
+          req.on('end', () => {
+            try {
+              let parsed = {};
+              try { parsed = JSON.parse(body || '{}'); } catch(e) {}
+              const targetProj = parsed.project || (url && url.searchParams && url.searchParams.get('project')) || 'Luno';
+              const branch = parsed.branch || 'main';
+              const autocommit = parsed.autocommit !== false;
+              const baseDir = LunoServer.resolveProjectBaseDir(targetProj);
+              const account = (typeof LunoDeployEngine !== 'undefined' && LunoDeployEngine.getGithubAccount) 
+                ? LunoDeployEngine.getGithubAccount() 
+                : 'karmatics';
+              const sshUrl = `git@github.com:${account}/${targetProj}.git`;
+              const publicHttpsUrl = `https://github.com/${account}/${targetProj}.git`;
+
+              if (!fs.existsSync(baseDir)) {
+                try {
+                  const { execSync } = require('child_process');
+                  fs.mkdirSync(path.dirname(baseDir), { recursive: true });
+                  let cloneOut = '';
+                  try {
+                    cloneOut = execSync(`git clone ${sshUrl} "${baseDir}"`, {
+                      encoding: 'utf8',
+                      timeout: 30000,
+                      env: Object.assign({}, process.env, {
+                        GIT_TERMINAL_PROMPT: '0',
+                        GIT_SSH_COMMAND: 'ssh -o StrictHostKeyChecking=accept-new -o BatchMode=yes -o ConnectTimeout=5'
+                      })
+                    });
+                  } catch (sshCloneErr) {
+                    cloneOut = execSync(`git clone ${publicHttpsUrl} "${baseDir}"`, { encoding: 'utf8', timeout: 30000 });
+                  }
+                  return LunoServer.sendJSON(res, 200, {
+                    success: true,
+                    project: targetProj,
+                    autocommitted: false,
+                    hasConflicts: false,
+                    conflicts: [],
+                    output: `Cloned ${targetProj} fresh from GitHub:\n${cloneOut.trim()}`,
+                    statusText: ''
+                  });
+                } catch(cloneErr) {
+                  return LunoServer.sendJSON(res, 404, {
+                    success: false,
+                    error: `Project directory not found and auto-clone failed: ${cloneErr.message}`
+                  });
+                }
+              }
+
+              const gitDir = path.join(baseDir, '.git');
+              if (!fs.existsSync(gitDir)) {
+                try {
+                  const { execSync } = require('child_process');
+                  execSync('git init -b main', { cwd: baseDir, encoding: 'utf8' });
+                  execSync(`git remote add origin ${sshUrl}`, { cwd: baseDir, encoding: 'utf8' });
+                } catch(e) {}
+              }
+
+              const lockFile = path.join(baseDir, '.git', 'index.lock');
+              if (fs.existsSync(lockFile)) {
+                try { fs.unlinkSync(lockFile); } catch(e) {}
+              }
+
+              const envOpts = {
+                cwd: baseDir,
+                encoding: 'utf8',
+                timeout: 25000,
+                env: Object.assign({}, process.env, {
+                  GIT_TERMINAL_PROMPT: '0',
+                  GIT_SSH_COMMAND: 'ssh -o StrictHostKeyChecking=accept-new -o BatchMode=yes -o ConnectTimeout=6'
+                })
+              };
+
+              const { execSync } = require('child_process');
+              let output = '';
+              let autocommitted = false;
+              let statusText = '';
+              try { statusText = execSync('git status --short', envOpts).trim(); } catch(e) {}
+
+              if (statusText && autocommit) {
+                try {
+                  execSync('git add -A', envOpts);
+                  execSync(`git commit -m "[Auto-Snapshot before Pull] ${new Date().toLocaleString()}"`, envOpts);
+                  output += `✓ Saved local snapshot.\n`;
+                  autocommitted = true;
+                } catch(cErr) {
+                  output += `⚠️ Snapshot notice: ${cErr.message}\n`;
+                }
+              }
+
+              output += `$ git pull --rebase origin ${branch}\n`;
+              let pullSuccess = false;
+
+              try {
+                const pullRes = execSync(`git pull --rebase --autostash origin ${branch} 2>&1`, envOpts);
+                output += (pullRes.trim() || 'Already up to date.') + '\n';
+                pullSuccess = true;
+              } catch(pullErr) {
+                try {
+                  output += `⚠️ Retrying pull via public HTTPS without altering SSH origin...\n`;
+                  const retryRes = execSync(`git pull --rebase --autostash ${publicHttpsUrl} ${branch} 2>&1`, envOpts);
+                  output += (retryRes.trim() || 'Already up to date.') + '\n';
+                  pullSuccess = true;
+                } catch(retryErr) {
+                  output += ((retryErr.stdout || '') + (retryErr.stderr || retryErr.message || '')).trim() + '\n';
+                }
+              }
+
+              let conflicts = [];
+              try {
+                const unmerged = execSync('git diff --name-only --diff-filter=U 2>/dev/null', envOpts).trim();
+                if (unmerged) conflicts = unmerged.split('\n').filter(Boolean);
+              } catch(e) {}
+
+              let postStatus = '';
+              try { postStatus = execSync('git status --short', envOpts).trim(); } catch(e) {}
+
+              return LunoServer.sendJSON(res, 200, {
+                success: pullSuccess && conflicts.length === 0,
+                project: targetProj,
+                autocommitted,
+                hasConflicts: conflicts.length > 0,
+                conflicts,
+                output: output.trim(),
+                statusText: postStatus
+              });
+            } catch(err) {
+              return LunoServer.sendJSON(res, 500, { success: false, error: err.message });
+            }
+          });
+      }
   static handleGitConflicts(req, res, url) {
       const targetProj = url.searchParams.get('project') || 'Luno';
       const baseDir = LunoServer.resolveProjectBaseDir(targetProj);
@@ -2172,6 +2223,334 @@ static serveIndex(req, res) {
 
       return { token: '', source: 'none' };
     }
+
+  static async handlePeerDiscover(req, res) {
+        const os = require('os');
+        const http = require('http');
+        const net = require('net');
+        const nets = os.networkInterfaces();
+        const ownIps = new Set(['127.0.0.1']);
+        const subnets = new Set();
+
+        for (const name of Object.keys(nets)) {
+          for (const netIf of nets[name]) {
+            if (netIf.family === 'IPv4' && !netIf.internal) {
+              ownIps.add(netIf.address);
+              const parts = netIf.address.split('.');
+              if (parts.length === 4) {
+                subnets.add(parts.slice(0, 3).join('.'));
+              }
+            }
+          }
+        }
+
+        const candidates = new Set(['10.0.0.245', '10.0.0.226']);
+        if (globalThis._lunoRegisteredPeers) {
+          Object.keys(globalThis._lunoRegisteredPeers).forEach(ip => candidates.add(ip));
+        }
+
+        try {
+          const arpOut = execSync('arp -a', { encoding: 'utf8', timeout: 1500 });
+          const ipMatches = arpOut.match(/\b\d{1,3}(?:\.\d{1,3}){3}\b/g) || [];
+          ipMatches.forEach(ip => {
+            if (!ip.endsWith('.255') && !ip.startsWith('224.') && !ip.startsWith('239.')) {
+              candidates.add(ip);
+            }
+          });
+        } catch (e) {}
+
+        for (const sub of subnets) {
+          for (let i = 1; i <= 254; i++) {
+            candidates.add(`${sub}.${i}`);
+          }
+        }
+
+        const checkPort8080 = (ip, timeoutMs = 1500) => new Promise((resolve) => {
+          if (ownIps.has(ip)) return resolve(false);
+          const sock = new net.Socket();
+          let done = false;
+          const finish = (ok) => {
+            if (done) return;
+            done = true;
+            try { sock.destroy(); } catch (e) {}
+            resolve(ok);
+          };
+          sock.setTimeout(timeoutMs);
+          sock.on('connect', () => finish(true));
+          sock.on('timeout', () => finish(false));
+          sock.on('error', () => finish(false));
+          sock.connect(8080, ip);
+        });
+
+        const pingPeer = (ip) => new Promise((resolve) => {
+          const r = http.get({ hostname: ip, port: 8080, path: '/api/ping', timeout: 2000 }, (resp) => {
+            let body = '';
+            resp.on('data', c => body += c);
+            resp.on('end', () => {
+              try {
+                const parsed = JSON.parse(body);
+                if (parsed && parsed.status === 'online') {
+                  return resolve({ ip, port: 8080, ...parsed });
+                }
+              } catch (e) {}
+              resolve(null);
+            });
+          });
+          r.on('timeout', () => { r.destroy(); resolve(null); });
+          r.on('error', () => resolve(null));
+        });
+
+        const list = Array.from(candidates);
+        const open8080Ips = [];
+        const BATCH = 64;
+        for (let i = 0; i < list.length; i += BATCH) {
+          const chunk = list.slice(i, i + BATCH);
+          const checks = await Promise.all(chunk.map(async (ip) => (await checkPort8080(ip, 1500)) ? ip : null));
+          checks.forEach(ip => { if (ip) open8080Ips.push(ip); });
+        }
+
+        const peers = (await Promise.all(open8080Ips.map(pingPeer))).filter(Boolean);
+        if (!globalThis._lunoRegisteredPeers) globalThis._lunoRegisteredPeers = {};
+        peers.forEach(p => {
+          globalThis._lunoRegisteredPeers[p.ip] = { ...p, lastSeen: new Date().toISOString(), lastSeenMs: Date.now() };
+        });
+
+        return LunoServer.sendJSON(res, 200, {
+          success: true,
+          self: {
+            hostname: os.hostname(),
+            platform: os.platform(),
+            ips: Array.from(ownIps),
+            port: process.env.PORT || 8080
+          },
+          peers
+        });
+      }
+  static handlePeerRelay(req, res) {
+        const http = require('http');
+        let raw = '';
+        req.on('data', c => { raw += c; });
+        req.on('end', () => {
+          try {
+            const parsed = JSON.parse(raw || '{}');
+            const targetHostRaw = String(parsed.targetHost || '').trim();
+            const targetPath = String(parsed.path || '/api/ping');
+            const reqMethod = String(parsed.method || 'GET').toUpperCase();
+            const timeoutMs = Math.min(120000, Math.max(2000, parseInt(parsed.timeoutMs || '35000', 10)));
+
+            if (!targetHostRaw) {
+              return LunoServer.sendJSON(res, 400, { success: false, error: 'Missing targetHost' });
+            }
+
+            const cleanTarget = targetHostRaw.replace(/^https?:\/\//, '').replace(/\/.*$/, '');
+            const colonIdx = cleanTarget.lastIndexOf(':');
+            const host = colonIdx !== -1 ? cleanTarget.slice(0, colonIdx) : cleanTarget;
+            const port = colonIdx !== -1 ? (parseInt(cleanTarget.slice(colonIdx + 1), 10) || 8080) : 8080;
+
+            const isAllowedLanHost = host === 'localhost' ||
+              host === '127.0.0.1' ||
+              host.startsWith('10.') ||
+              host.startsWith('192.168.') ||
+              host.endsWith('.local') ||
+              host.endsWith('.lan') ||
+              host.endsWith('.home') ||
+              /^172\.(1[6-9]|2[0-9]|3[0-1])\./.test(host);
+
+            if (!isAllowedLanHost) {
+              return LunoServer.sendJSON(res, 403, { success: false, error: 'Relay restricted to local LAN hosts: ' + host });
+            }
+
+            const outBody = parsed.body !== undefined && parsed.body !== null
+              ? (typeof parsed.body === 'string' ? parsed.body : JSON.stringify(parsed.body))
+              : null;
+
+            const headers = { 'X-Luno-Client': '1' };
+            if (outBody !== null) {
+              headers['Content-Type'] = 'application/json';
+              headers['Content-Length'] = Buffer.byteLength(outBody);
+            }
+
+            const peerReq = http.request({
+              hostname: host,
+              port: port,
+              path: targetPath.startsWith('/') ? targetPath : ('/' + targetPath),
+              method: reqMethod,
+              headers,
+              timeout: timeoutMs
+            }, (peerRes) => {
+              let respText = '';
+              peerRes.on('data', chunk => { respText += chunk; });
+              peerRes.on('end', () => {
+                let data = respText;
+                try { data = JSON.parse(respText); } catch (e) {}
+                return LunoServer.sendJSON(res, 200, {
+                  success: peerRes.statusCode >= 200 && peerRes.statusCode < 300,
+                  status: peerRes.statusCode,
+                  targetHost: `${host}:${port}`,
+                  data
+                });
+              });
+            });
+
+            peerReq.on('timeout', () => {
+              peerReq.destroy();
+              LunoServer.sendJSON(res, 504, { success: false, error: `Timeout reaching peer ${host}:${port}${targetPath}` });
+            });
+
+            peerReq.on('error', (err) => {
+              LunoServer.sendJSON(res, 502, { success: false, error: `Cannot reach peer ${host}:${port}: ${err.message}` });
+            });
+
+            if (outBody !== null) peerReq.write(outBody);
+            peerReq.end();
+          } catch (err) {
+            return LunoServer.sendJSON(res, 400, { success: false, error: err.message });
+          }
+        });
+      }
+
+  static handlePeerRegister(req, res) {
+        let body = '';
+        req.on('data', c => { body += c; });
+        req.on('end', () => {
+          try {
+            const parsed = JSON.parse(body || '{}');
+            const remoteRaw = (req.socket && req.socket.remoteAddress) || '';
+            const remoteIp = remoteRaw.replace(/^::ffff:/, '');
+            const ip = (parsed.ip || remoteIp || '').trim();
+            if (!ip) {
+              return LunoServer.sendJSON(res, 400, { success: false, error: 'Could not determine peer IP' });
+            }
+
+            if (!globalThis._lunoRegisteredPeers) globalThis._lunoRegisteredPeers = {};
+            const entry = {
+              ip,
+              port: parseInt(parsed.port || '8080', 10) || 8080,
+              hostname: parsed.hostname || ip,
+              platform: parsed.platform || 'unknown',
+              isLinux: Boolean(parsed.isLinux || parsed.platform === 'linux'),
+              isMac: Boolean(parsed.isMac || parsed.platform === 'darwin'),
+              webRoot: parsed.webRoot || '',
+              version: parsed.version || '',
+              lastSeen: new Date().toISOString(),
+              lastSeenMs: Date.now()
+            };
+            globalThis._lunoRegisteredPeers[ip] = entry;
+
+            try {
+              const peersFile = path.join(LunoServer.getWebRootDir(), 'HomeSetup', 'state', 'peers.json');
+              fs.mkdirSync(path.dirname(peersFile), { recursive: true });
+              let diskPeers = {};
+              if (fs.existsSync(peersFile)) {
+                try { diskPeers = JSON.parse(fs.readFileSync(peersFile, 'utf8')); } catch (e) {}
+              }
+              diskPeers[ip] = entry;
+              fs.writeFileSync(peersFile, JSON.stringify(diskPeers, null, 2), 'utf8');
+            } catch (e) {}
+
+            return LunoServer.sendJSON(res, 200, { success: true, registered: entry });
+          } catch (err) {
+            return LunoServer.sendJSON(res, 400, { success: false, error: err.message });
+          }
+        });
+      }
+
+  static handlePeerList(req, res) {
+        if (!globalThis._lunoRegisteredPeers) globalThis._lunoRegisteredPeers = {};
+        try {
+          const peersFile = path.join(LunoServer.getWebRootDir(), 'HomeSetup', 'state', 'peers.json');
+          if (fs.existsSync(peersFile)) {
+            const diskPeers = JSON.parse(fs.readFileSync(peersFile, 'utf8'));
+            Object.assign(globalThis._lunoRegisteredPeers, diskPeers);
+          }
+        } catch (e) {}
+
+        return LunoServer.sendJSON(res, 200, {
+          success: true,
+          peers: Object.values(globalThis._lunoRegisteredPeers)
+        });
+      }
+
+  static ensurePeerBeaconStarted() {
+        if (globalThis._lunoBeaconStarted) return;
+        globalThis._lunoBeaconStarted = true;
+
+        const os = require('os');
+        const http = require('http');
+
+        const sendBeacon = () => {
+          try {
+            const platform = os.platform();
+            const isMac = platform === 'darwin';
+            const isLinux = platform === 'linux';
+            const myPort = parseInt(process.env.PORT || '8080', 10) || 8080;
+
+            const nets = os.networkInterfaces();
+            let primaryIp = '';
+            for (const name of Object.keys(nets)) {
+              for (const netIf of nets[name]) {
+                if (netIf.family === 'IPv4' && !netIf.internal) {
+                  primaryIp = netIf.address;
+                  break;
+                }
+              }
+              if (primaryIp) break;
+            }
+            if (!primaryIp) return;
+
+            const targets = new Set();
+            if (isLinux) {
+              targets.add('mac-mini-rob.local');
+              targets.add('10.0.0.226');
+            } else if (isMac) {
+              targets.add('rob-HP-ZBook-15-G6.local');
+            }
+
+            try {
+              const peersFile = path.join(LunoServer.getWebRootDir(), 'HomeSetup', 'state', 'peers.json');
+              if (fs.existsSync(peersFile)) {
+                const diskPeers = JSON.parse(fs.readFileSync(peersFile, 'utf8'));
+                Object.values(diskPeers).forEach(p => {
+                  if (p && p.ip && p.ip !== primaryIp) targets.add(p.ip);
+                });
+              }
+            } catch (e) {}
+
+            const payload = JSON.stringify({
+              ip: primaryIp,
+              port: myPort,
+              hostname: os.hostname(),
+              platform,
+              isMac,
+              isLinux,
+              webRoot: LunoServer.getWebRootDir(),
+              version: LunoServer.VERSION
+            });
+
+            targets.forEach(host => {
+              const r = http.request({
+                hostname: host,
+                port: 8080,
+                path: '/api/peer/register',
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'Content-Length': Buffer.byteLength(payload),
+                  'X-Luno-Client': '1'
+                },
+                timeout: 1500
+              }, (resp) => { resp.resume(); });
+              r.on('timeout', () => { try { r.destroy(); } catch (e) {} });
+              r.on('error', () => {});
+              r.write(payload);
+              r.end();
+            });
+          } catch (e) {}
+        };
+
+        setTimeout(sendBeacon, 1200);
+        setInterval(sendBeacon, 60000).unref?.();
+      }
 }
 
 globalThis.LunoServer = LunoServer;

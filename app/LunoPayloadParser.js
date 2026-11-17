@@ -38,175 +38,181 @@ class LunoPayloadParser {
   }
 
   static parse(text) {
-      if (!text || typeof text !== 'string') {
-        return { files: [], serverScript: '', clientScript: '', requests: [], debugLogs: ['Input text is empty'] };
-      }
-
-      var cleaned = LunoPayloadParser.stripMarkdownFences(text);
-
-      var files = [];
-      var serverScript = '';
-      var clientScript = '';
-      var requests = [];
-      var debugLogs = [];
-      var pos = 0;
-      var len = cleaned.length;
-
-      var SCRIPT_WORD = 'scr' + 'ipt';
-      var STYLE_WORD = 'sty' + 'le';
-      var TEMPLATE_WORD = 'temp' + 'late';
-      var SVG_WORD = 'sv' + 'g';
-
-      while (pos < len) {
-        var openIdx = cleaned.indexOf('<', pos);
-        if (openIdx === -1) break;
-
-        var isClose = cleaned.substring(openIdx, openIdx + 2) === '</';
-        if (isClose) {
-          pos = openIdx + 2;
-          continue;
+        if (!text || typeof text !== 'string') {
+          return { files: [], serverScript: '', clientScript: '', peerServerScripts: [], requests: [], debugLogs: ['Input text is empty'] };
         }
 
-        var tickCheck = LunoPayloadParser._isInsideInlineBacktick(cleaned, openIdx);
-        if (tickCheck.inside) {
-          pos = tickCheck.closeEnd;
-          continue;
-        }
+        var cleaned = LunoPayloadParser.stripMarkdownFences(text);
 
-        var tagWord = null;
-        var rest = cleaned.substring(openIdx + 1);
+        var files = [];
+        var serverScript = '';
+        var clientScript = '';
+        var peerServerScripts = [];
+        var requests = [];
+        var debugLogs = [];
+        var pos = 0;
+        var len = cleaned.length;
 
-        if (rest.indexOf(SCRIPT_WORD) === 0) tagWord = SCRIPT_WORD;
-        else if (rest.indexOf(STYLE_WORD) === 0) tagWord = STYLE_WORD;
-        else if (rest.indexOf(TEMPLATE_WORD) === 0) tagWord = TEMPLATE_WORD;
-        else if (rest.indexOf(SVG_WORD) === 0) tagWord = SVG_WORD;
+        var SCRIPT_WORD = 'scr' + 'ipt';
+        var STYLE_WORD = 'sty' + 'le';
+        var TEMPLATE_WORD = 'temp' + 'late';
+        var SVG_WORD = 'sv' + 'g';
 
-        if (!tagWord) {
-          pos = openIdx + 1;
-          continue;
-        }
+        while (pos < len) {
+          var openIdx = cleaned.indexOf('<', pos);
+          if (openIdx === -1) break;
 
-        var nextChar = cleaned.charAt(openIdx + 1 + tagWord.length);
-        if (nextChar && nextChar !== ' ' && nextChar !== '\t' && nextChar !== '\n' && nextChar !== '\r' && nextChar !== '>') {
-          pos = openIdx + 1;
-          continue;
-        }
+          var isClose = cleaned.substring(openIdx, openIdx + 2) === '</';
+          if (isClose) {
+            pos = openIdx + 2;
+            continue;
+          }
 
-        var headerEndIdx = LunoPayloadParser._findHeaderEnd(cleaned, openIdx + 1 + tagWord.length);
-        if (headerEndIdx === -1) break;
+          var tickCheck = LunoPayloadParser._isInsideInlineBacktick(cleaned, openIdx);
+          if (tickCheck.inside) {
+            pos = tickCheck.closeEnd;
+            continue;
+          }
 
-        var headerStr = cleaned.substring(openIdx + 1 + tagWord.length, headerEndIdx);
+          var tagWord = null;
+          var rest = cleaned.substring(openIdx + 1);
 
-        if (!LunoPayloadParser._isContainerHeader(headerStr)) {
-          pos = openIdx + 1;
-          continue;
-        }
+          if (rest.indexOf(SCRIPT_WORD) === 0) tagWord = SCRIPT_WORD;
+          else if (rest.indexOf(STYLE_WORD) === 0) tagWord = STYLE_WORD;
+          else if (rest.indexOf(TEMPLATE_WORD) === 0) tagWord = TEMPLATE_WORD;
+          else if (rest.indexOf(SVG_WORD) === 0) tagWord = SVG_WORD;
 
-        var closeInfo = LunoPayloadParser._findClosingTag(cleaned, headerEndIdx, tagWord);
-        if (!closeInfo) {
-          pos = headerEndIdx + 1;
-          continue;
-        }
+          if (!tagWord) {
+            pos = openIdx + 1;
+            continue;
+          }
 
-        var closeSearchIdx = closeInfo.closeSearchIdx;
-        var closeEndIdx = closeInfo.closeEndIdx;
-        var closeTag = '</' + tagWord;
-        var isScript = (tagWord === SCRIPT_WORD);
+          var nextChar = cleaned.charAt(openIdx + 1 + tagWord.length);
+          if (nextChar && nextChar !== ' ' && nextChar !== '\t' && nextChar !== '\n' && nextChar !== '\r' && nextChar !== '>') {
+            pos = openIdx + 1;
+            continue;
+          }
 
-        var innerContent = cleaned.substring(headerEndIdx + 1, closeSearchIdx).trim();
-        var rawFilePath = LunoPayloadParser.getAttrValue(headerStr, 'data-file');
-        var filePath = rawFilePath ? rawFilePath.replace(/\\/g, '/').replace(/^\/+/, '').trim() : '';
-        var methodSpec = LunoPayloadParser.getAttrValue(headerStr, 'data-method') || LunoPayloadParser.getAttrValue(headerStr, 'data-block');
-        var action = (LunoPayloadParser.getAttrValue(headerStr, 'data-action') || 'write').toLowerCase();
-        var typeAttr = LunoPayloadParser.getAttrValue(headerStr, 'type').toLowerCase();
+          var headerEndIdx = LunoPayloadParser._findHeaderEnd(cleaned, openIdx + 1 + tagWord.length);
+          if (headerEndIdx === -1) break;
 
-        var isJsScript = isScript && typeAttr !== 'application/json' && typeAttr !== 'text/plain' && typeAttr !== 'application/luno-request' && action !== 'request';
+          var headerStr = cleaned.substring(openIdx + 1 + tagWord.length, headerEndIdx);
 
-        if (!isJsScript) {
-          var innerFenceThenContainer = /\r?\n[ \t]*(?:`{2,}|~{2,})[^\n]*\r?\n[\s\S]*?<(?:script|style|template|svg)\b[^>]*\b(?:data-file|data-action|type)\s*=/i.test(innerContent);
-          if (innerFenceThenContainer) {
+          if (!LunoPayloadParser._isContainerHeader(headerStr)) {
+            pos = openIdx + 1;
+            continue;
+          }
+
+          var closeInfo = LunoPayloadParser._findClosingTag(cleaned, headerEndIdx, tagWord);
+          if (!closeInfo) {
             pos = headerEndIdx + 1;
             continue;
           }
-        }
 
-        if (isJsScript && innerContent) {
-          var validateJs = function(code, isMethod) {
-            var acornObj = (typeof window !== 'undefined' && window.acorn) || (typeof globalThis !== 'undefined' && globalThis.acorn);
-            if (!acornObj && typeof require !== 'undefined') {
-              try { acornObj = require('acorn'); } catch (e) {}
-            }
-            if (!acornObj || typeof acornObj.parse !== 'function') return true;
+          var closeSearchIdx = closeInfo.closeSearchIdx;
+          var closeEndIdx = closeInfo.closeEndIdx;
+          var closeTag = '</' + tagWord;
+          var isScript = (tagWord === SCRIPT_WORD);
 
-            var testCode = isMethod ? ('class __ValidationWrapper__ {\n' + code + '\n}') : code;
-            var opts = { ecmaVersion: 'latest', sourceType: 'module', allowReturnOutsideFunction: true, allowImportExportEverywhere: true };
-            try {
-              acornObj.parse(testCode, opts);
-              return true;
-            } catch (e) {
-              try {
-                opts.sourceType = 'script';
-                acornObj.parse(testCode, opts);
-                return true;
-              } catch (e2) {
-                return false;
-              }
-            }
-          };
+          var innerContent = cleaned.substring(headerEndIdx + 1, closeSearchIdx).trim();
+          var rawFilePath = LunoPayloadParser.getAttrValue(headerStr, 'data-file');
+          var filePath = rawFilePath ? rawFilePath.replace(/\\/g, '/').replace(/^\/+/, '').trim() : '';
+          var methodSpec = LunoPayloadParser.getAttrValue(headerStr, 'data-method') || LunoPayloadParser.getAttrValue(headerStr, 'data-block');
+          var action = (LunoPayloadParser.getAttrValue(headerStr, 'data-action') || 'write').toLowerCase();
+          var typeAttr = LunoPayloadParser.getAttrValue(headerStr, 'type').toLowerCase();
+          var hostAttr = LunoPayloadParser.getAttrValue(headerStr, 'data-host').trim();
 
-          var isMethodPatch = Boolean(methodSpec || action === 'patch');
-          var isValid = validateJs(innerContent, isMethodPatch);
+          var isJsScript = isScript && typeAttr !== 'application/json' && typeAttr !== 'text/plain' && typeAttr !== 'application/luno-request' && action !== 'request';
 
-          if (!isValid) {
-            var hasInnerContainer = /<(?:script|style|template|svg)\b[^>]*\b(?:data-file|data-action|type)\s*=/i.test(innerContent);
-            if (hasInnerContainer) {
+          if (!isJsScript) {
+            var innerFenceThenContainer = /\r?\n[ \t]*(?:`{2,}|~{2,})[^\n]*\r?\n[\s\S]*?<(?:script|style|template|svg)\b[^>]*\b(?:data-file|data-action|type)\s*=/i.test(innerContent);
+            if (innerFenceThenContainer) {
               pos = headerEndIdx + 1;
               continue;
             }
+          }
 
-            var nextCloseIdx = cleaned.indexOf(closeTag, closeEndIdx + 1);
-            while (!isValid && nextCloseIdx !== -1) {
-              var afterNext = nextCloseIdx + closeTag.length;
-              while (afterNext < len && (cleaned.charAt(afterNext) === ' ' || cleaned.charAt(afterNext) === '\t' || cleaned.charAt(afterNext) === '\r' || cleaned.charAt(afterNext) === '\n')) afterNext++;
-              if (afterNext < len && cleaned.charAt(afterNext) === '>') {
-                var candidateContent = cleaned.substring(headerEndIdx + 1, nextCloseIdx).trim();
-                if (validateJs(candidateContent, isMethodPatch)) {
-                  innerContent = candidateContent;
-                  closeSearchIdx = nextCloseIdx;
-                  closeEndIdx = afterNext;
-                  isValid = true;
-                  var warnMsg = 'Recovered boundary for <' + SCRIPT_WORD + ' data-file="' + filePath + '"> by advancing to boundary offset ' + nextCloseIdx;
-                  debugLogs.push(warnMsg);
-                  if (typeof LunoPlaybackLogger !== 'undefined' && typeof LunoPlaybackLogger.warn === 'function') {
-                    LunoPlaybackLogger.warn('Parser Boundary Recovery', warnMsg);
-                  }
-                  break;
+          if (isJsScript && innerContent) {
+            var validateJs = function(code, isMethod) {
+              var acornObj = (typeof window !== 'undefined' && window.acorn) || (typeof globalThis !== 'undefined' && globalThis.acorn);
+              if (!acornObj && typeof require !== 'undefined') {
+                try { acornObj = require('acorn'); } catch (e) {}
+              }
+              if (!acornObj || typeof acornObj.parse !== 'function') return true;
+
+              var testCode = isMethod ? ('class __ValidationWrapper__ {\n' + code + '\n}') : code;
+              var opts = { ecmaVersion: 'latest', sourceType: 'module', allowReturnOutsideFunction: true, allowImportExportEverywhere: true };
+              try {
+                acornObj.parse(testCode, opts);
+                return true;
+              } catch (e) {
+                try {
+                  opts.sourceType = 'script';
+                  acornObj.parse(testCode, opts);
+                  return true;
+                } catch (e2) {
+                  return false;
                 }
               }
-              nextCloseIdx = cleaned.indexOf(closeTag, nextCloseIdx + closeTag.length);
-            }
+            };
+
+            var isMethodPatch = Boolean(methodSpec || action === 'patch');
+            var isValid = validateJs(innerContent, isMethodPatch);
 
             if (!isValid) {
-              debugLogs.push('Script container for "' + (filePath || 'anonymous') + '" generated AST syntax warnings during boundary scan');
+              var hasInnerContainer = /<(?:script|style|template|svg)\b[^>]*\b(?:data-file|data-action|type)\s*=/i.test(innerContent);
+              if (hasInnerContainer) {
+                pos = headerEndIdx + 1;
+                continue;
+              }
+
+              var nextCloseIdx = cleaned.indexOf(closeTag, closeEndIdx + 1);
+              while (!isValid && nextCloseIdx !== -1) {
+                var afterNext = nextCloseIdx + closeTag.length;
+                while (afterNext < len && (cleaned.charAt(afterNext) === ' ' || cleaned.charAt(afterNext) === '\t' || cleaned.charAt(afterNext) === '\r' || cleaned.charAt(afterNext) === '\n')) afterNext++;
+                if (afterNext < len && cleaned.charAt(afterNext) === '>') {
+                  var candidateContent = cleaned.substring(headerEndIdx + 1, nextCloseIdx).trim();
+                  if (validateJs(candidateContent, isMethodPatch)) {
+                    innerContent = candidateContent;
+                    closeSearchIdx = nextCloseIdx;
+                    closeEndIdx = afterNext;
+                    isValid = true;
+                    var warnMsg = 'Recovered boundary for <' + SCRIPT_WORD + ' data-file="' + filePath + '"> by advancing to boundary offset ' + nextCloseIdx;
+                    debugLogs.push(warnMsg);
+                    if (typeof LunoPlaybackLogger !== 'undefined' && typeof LunoPlaybackLogger.warn === 'function') {
+                      LunoPlaybackLogger.warn('Parser Boundary Recovery', warnMsg);
+                    }
+                    break;
+                  }
+                }
+                nextCloseIdx = cleaned.indexOf(closeTag, nextCloseIdx + closeTag.length);
+              }
+
+              if (!isValid) {
+                debugLogs.push('Script container for "' + (filePath || 'anonymous') + '" generated AST syntax warnings during boundary scan');
+              }
             }
           }
+
+          if (typeAttr === 'application/luno-request' || action === 'request') {
+            requests.push({ tagName: tagWord, filePath: filePath, methodSpec: methodSpec, content: innerContent });
+          } else if (action === 'run-server' || filePath === 'RUN: SERVER') {
+            if (hostAttr && hostAttr.toLowerCase() !== 'local' && hostAttr.toLowerCase() !== 'self') {
+              peerServerScripts.push({ host: hostAttr, code: innerContent });
+            } else {
+              serverScript += (serverScript ? '\n\n' : '') + innerContent;
+            }
+          } else if (action === 'run-client' || filePath === 'RUN: CLIENT') {
+            clientScript += (clientScript ? '\n\n' : '') + innerContent;
+          } else if (filePath && filePath !== '...') {
+            files.push({ tagName: tagWord, filePath: filePath, methodSpec: methodSpec, action: action, host: hostAttr || '', content: innerContent });
+          }
+
+          pos = closeEndIdx + 1;
         }
 
-        if (typeAttr === 'application/luno-request' || action === 'request') {
-          requests.push({ tagName: tagWord, filePath: filePath, methodSpec: methodSpec, content: innerContent });
-        } else if (action === 'run-server' || filePath === 'RUN: SERVER') {
-          serverScript += (serverScript ? '\n\n' : '') + innerContent;
-        } else if (action === 'run-client' || filePath === 'RUN: CLIENT') {
-          clientScript += (clientScript ? '\n\n' : '') + innerContent;
-        } else if (filePath && filePath !== '...') {
-          files.push({ tagName: tagWord, filePath: filePath, methodSpec: methodSpec, action: action, content: innerContent });
-        }
-
-        pos = closeEndIdx + 1;
+        return { files: files, serverScript: serverScript, clientScript: clientScript, peerServerScripts: peerServerScripts, requests: requests, debugLogs: debugLogs };
       }
-
-      return { files: files, serverScript: serverScript, clientScript: clientScript, requests: requests, debugLogs: debugLogs };
-    }
   static parsePatchLog(patchLogHtml) {
     return LunoPayloadParser.parse(patchLogHtml);
   }

@@ -2,15 +2,17 @@ class LunoApiClient {
   constructor() {}
 
   static isStaticMode() {
-    if (typeof LunoFileSystem !== 'undefined' && typeof LunoFileSystem.isStaticHosting === 'function') {
-      return LunoFileSystem.isStaticHosting();
+      if (LunoApiClient.getExecTargetHost && LunoApiClient.getExecTargetHost()) {
+        return false;
+      }
+      if (typeof LunoFileSystem !== 'undefined' && typeof LunoFileSystem.isStaticHosting === 'function') {
+        return LunoFileSystem.isStaticHosting();
+      }
+      if (typeof LunoLoader !== 'undefined' && typeof LunoLoader.isStaticHosting === 'function') {
+        return LunoLoader.isStaticHosting();
+      }
+      return false;
     }
-    if (typeof LunoLoader !== 'undefined' && typeof LunoLoader.isStaticHosting === 'function') {
-      return LunoLoader.isStaticHosting();
-    }
-    return false;
-  }
-
   static cleanPath(rawPath) {
     if (!rawPath || typeof rawPath !== 'string') return '';
     var clean = rawPath.replace(/\\/g, '/').replace(/^\/+/, '').trim();
@@ -20,21 +22,57 @@ class LunoApiClient {
   }
 
   static async safeJsonFetch(url, options) {
-    const res = await fetch(url, options);
-    const text = await res.text();
-    const trimmed = text.trim();
+      var targetHost = LunoApiClient.getExecTargetHost ? LunoApiClient.getExecTargetHost() : '';
+      var isActuallyStatic = (typeof LunoFileSystem !== 'undefined' && typeof LunoFileSystem.isStaticHosting === 'function')
+        ? LunoFileSystem.isStaticHosting()
+        : false;
 
-    if (trimmed.startsWith('<') || trimmed.startsWith('<!DOCTYPE') || trimmed.startsWith('<html')) {
-      throw new Error('Endpoint returned HTML document instead of JSON (' + res.status + ') for: ' + url);
+      if (targetHost && typeof url === 'string' && url.startsWith('/api/') && !url.startsWith('/api/peer/')) {
+        var cleanHost = targetHost.replace(/^https?:\/\//, '').replace(/\/.*$/, '');
+        var hostWithPort = cleanHost.includes(':') ? cleanHost : (cleanHost + ':8080');
+
+        if (isActuallyStatic) {
+          const directRes = await fetch('http://' + hostWithPort + url, options);
+          const directText = await directRes.text();
+          const directTrim = directText.trim();
+          if (directTrim.startsWith('<') || directTrim.startsWith('<!DOCTYPE') || directTrim.startsWith('<html')) {
+            throw new Error('Endpoint returned HTML instead of JSON (' + directRes.status + ') for: ' + url);
+          }
+          return JSON.parse(directText);
+        }
+
+        const relayRes = await fetch('/api/peer/relay', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-Luno-Client': '1' },
+          body: JSON.stringify({
+            targetHost: hostWithPort,
+            path: url,
+            method: (options && options.method) || 'GET',
+            body: (options && options.body) || null
+          })
+        });
+        const relayText = await relayRes.text();
+        const parsedRelay = JSON.parse(relayText);
+        if (!parsedRelay.success && parsedRelay.error && parsedRelay.data === undefined) {
+          throw new Error('Peer Relay [' + hostWithPort + ']: ' + parsedRelay.error);
+        }
+        return parsedRelay.data !== undefined ? parsedRelay.data : parsedRelay;
+      }
+
+      const res = await fetch(url, options);
+      const text = await res.text();
+      const trimmed = text.trim();
+
+      if (trimmed.startsWith('<') || trimmed.startsWith('<!DOCTYPE') || trimmed.startsWith('<html')) {
+        throw new Error('Endpoint returned HTML document instead of JSON (' + res.status + ') for: ' + url);
+      }
+
+      try {
+        return JSON.parse(text);
+      } catch (e) {
+        throw new Error('Server returned non-JSON response (' + res.status + '): ' + text.slice(0, 100));
+      }
     }
-
-    try {
-      return JSON.parse(text);
-    } catch (e) {
-      throw new Error('Server returned non-JSON response (' + res.status + '): ' + text.slice(0, 100));
-    }
-  }
-
   static async ping() {
       if (LunoApiClient.isStaticMode()) {
         return { status: 'online', mode: 'indexedDb-static', rootDir: 'Project Root', version: 'v3.8.0' };
@@ -408,6 +446,26 @@ class LunoApiClient {
       }
 
       return { success: false, error: 'Git inspection unavailable in this environment' };
+    }
+
+  static getExecTargetHost() {
+      try {
+        if (typeof localStorage !== 'undefined') {
+          return (localStorage.getItem('luno_exec_target_host') || '').trim();
+        }
+      } catch (e) {}
+      return '';
+    }
+
+  static setExecTargetHost(host) {
+      var clean = (host || '').trim();
+      try {
+        if (typeof localStorage !== 'undefined') {
+          if (clean) localStorage.setItem('luno_exec_target_host', clean);
+          else localStorage.removeItem('luno_exec_target_host');
+        }
+      } catch (e) {}
+      return clean;
     }
 }
 

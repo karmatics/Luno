@@ -148,61 +148,61 @@ class LunoDeployEngine {
   }
 
   static async syncEverything(options = {}) {
-      var opts = options || {};
-      var peerHost = opts.peerHost || LunoDeployEngine.getPeerHost();
-      var onProgress = typeof opts.onProgress === 'function' ? opts.onProgress : () => {};
+        var opts = options || {};
+        var peerHost = opts.peerHost || await LunoDeployEngine.resolveLivePeerHost();
+        var onProgress = typeof opts.onProgress === 'function' ? opts.onProgress : () => {};
 
-      onProgress('🔍 1/3: Checking project modifications...');
-      var statusRes = await LunoDeployEngine.getFleetStatus(false);
-      var dirty = (statusRes && statusRes.dirtyProjects) || [];
-      var dirtyNames = dirty.map(d => d.name);
+        onProgress('🔍 1/4: Checking project modifications...');
+        var statusRes = await LunoDeployEngine.getFleetStatus(false);
+        var dirty = (statusRes && statusRes.dirtyProjects) || [];
+        var dirtyNames = dirty.map(d => d.name);
 
-      var committedCount = 0;
-      if (dirtyNames.length > 0) {
-        onProgress(`📸 2/3: Recording Git snapshots for ${dirtyNames.length} modified project(s)...`);
-        var commitRes = await LunoDeployEngine.commitSelectedProjects(dirtyNames, `[Auto-Sync Checkpoint] ${new Date().toLocaleString()}`);
-        committedCount = (commitRes && commitRes.results ? commitRes.results.filter(r => r.changesCommitted).length : dirtyNames.length);
-      } else {
-        onProgress('✓ Working trees are clean. No uncommitted modifications.');
+        var committedCount = 0;
+        if (dirtyNames.length > 0) {
+          onProgress(`📸 2/4: Recording Git snapshots for ${dirtyNames.length} modified project(s)...`);
+          var commitRes = await LunoDeployEngine.commitSelectedProjects(dirtyNames, `[Auto-Sync Checkpoint] ${new Date().toLocaleString()}`);
+          committedCount = (commitRes && commitRes.results ? commitRes.results.filter(r => r.changesCommitted).length : dirtyNames.length);
+        } else {
+          onProgress('✓ Working trees are clean. No uncommitted modifications.');
+        }
+
+        onProgress('⬆️ 3/4: Pushing latest commits to GitHub...');
+        var pushRes = await LunoDeployEngine.fleetSync('push', {
+          commitMsg: `[Fleet Sync] ${new Date().toLocaleString()}`
+        });
+
+        var pushFailed = (pushRes && Array.isArray(pushRes.failedRepos)) ? pushRes.failedRepos : [];
+        if (pushFailed.length > 0) {
+          onProgress(`⚠️ ${pushFailed.length} repo(s) had push notices: ${pushFailed.map(f => f.name).join(', ')}`);
+        }
+
+        var peerPullRes = null;
+        try {
+          onProgress(`🌐 4/4: Signaling peer node (${peerHost}:8080) to pull updates...`);
+          peerPullRes = await LunoDeployEngine.fleetSync('pull', { host: peerHost });
+        } catch(e) {
+          peerPullRes = { success: false, error: e.message };
+        }
+
+        var pullFailed = (peerPullRes && Array.isArray(peerPullRes.failedRepos)) ? peerPullRes.failedRepos : [];
+        var summary = [
+          '================================================================================',
+          '🎉 SMART FLEET SYNCHRONIZATION COMPLETE',
+          '================================================================================',
+          `• Local Snapshots:       ${committedCount} project(s) committed cleanly`,
+          `• GitHub Remote Push:    ${pushRes && pushRes.success ? '✅ All pushed to GitHub' : ('⚠️ ' + pushFailed.length + ' repo notice(s): ' + pushFailed.map(f => f.name).join(', '))}`,
+          `• Peer Synchronization:  ${peerPullRes && peerPullRes.success ? '✅ Peer (' + peerHost + ') pulled cleanly via Git' : ('⚠️ Peer (' + peerHost + '): ' + (peerPullRes?.error || (pullFailed.length + ' pull notice(s): ' + pullFailed.map(f => f.name).join(', '))))}`,
+          '================================================================================\n'
+        ].join('\n');
+
+        return {
+          success: true,
+          committedCount,
+          pushRes,
+          peerPullRes,
+          summary
+        };
       }
-
-      onProgress('⬆️ 3/3: Pushing latest commits to GitHub...');
-      var pushRes = await LunoDeployEngine.fleetSync('push', {
-        commitMsg: `[Fleet Sync] ${new Date().toLocaleString()}`
-      });
-
-      if (pushRes && !pushRes.success) {
-        onProgress(`ℹ️ Remote push completed (some repos had upstream notices).`);
-      }
-
-      // Always attempt peer pull regardless of upstream push notices
-      var peerPullRes = null;
-      try {
-        onProgress(`🌐 Notifying peer node (${peerHost}:8080) to pull updates...`);
-        peerPullRes = await LunoDeployEngine.fleetSync('pull', { host: peerHost });
-      } catch(e) {
-        peerPullRes = { success: false, error: e.message };
-      }
-
-      var summary = [
-        '================================================================================',
-        '🎉 SMART FLEET SYNCHRONIZATION COMPLETE',
-        '================================================================================',
-        `• Local Snapshots:       ${committedCount} project(s) committed cleanly`,
-        `• GitHub Remote Push:    ${pushRes && pushRes.success ? '✅ Pushed to GitHub' : 'ℹ️ Completed with notices'}`,
-        `• Peer Synchronization:  ${peerPullRes && peerPullRes.success ? '✅ Peer (' + peerHost + ') synchronized cleanly via Git' : 'ℹ️ ' + (peerPullRes?.error || 'Peer standby')}`,
-        '• Integrity Guarantee:   Git-versioned history. Zero blind raw-file overwrites.',
-        '================================================================================\n'
-      ].join('\n');
-
-      return {
-        success: true,
-        committedCount,
-        pushRes,
-        peerPullRes,
-        summary
-      };
-    }
   // Safe wrapper for backwards-compatibility: ensures single-project push doesn't clobber files
   static async directLanSync(targetHost = null, options = {}) {
     var peerHost = targetHost || LunoDeployEngine.getPeerHost();
@@ -223,102 +223,109 @@ class LunoDeployEngine {
   }
 
   static async getFleetStatus(forceFetch = false) {
-    try {
-      var res = await fetch('/api/git/fleet-sync', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-Luno-Client': '1' },
-        body: JSON.stringify({ action: 'status', fetch: Boolean(forceFetch) })
-      });
-      return await res.json();
-    } catch(err) {
-      return { success: false, error: err.message, results: [], dirtyProjects: [] };
+      try {
+        return await LunoDeployEngine._apiJson('/api/git/fleet-sync', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-Luno-Client': '1' },
+          body: JSON.stringify({ action: 'status', fetch: Boolean(forceFetch) })
+        });
+      } catch(err) {
+        return { success: false, error: err.message, results: [], dirtyProjects: [] };
+      }
     }
-  }
 
   static async commitSelectedProjects(projectsList, commitMsg) {
-    if (!Array.isArray(projectsList) || projectsList.length === 0) {
-      return { success: false, error: 'No projects selected to commit' };
+      if (!Array.isArray(projectsList) || projectsList.length === 0) {
+        return { success: false, error: 'No projects selected to commit' };
+      }
+      var msg = commitMsg || `[Auto-Sync Checkpoint] ${new Date().toLocaleString()}`;
+      try {
+        return await LunoDeployEngine._apiJson('/api/git/fleet-sync', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-Luno-Client': '1' },
+          body: JSON.stringify({ action: 'commit-selected', projects: projectsList, commitMsg: msg })
+        });
+      } catch(err) {
+        return { success: false, error: err.message };
+      }
     }
-    var msg = commitMsg || `[Auto-Sync Checkpoint] ${new Date().toLocaleString()}`;
-    try {
-      var res = await fetch('/api/git/fleet-sync', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-Luno-Client': '1' },
-        body: JSON.stringify({ action: 'commit-selected', projects: projectsList, commitMsg: msg })
-      });
-      return await res.json();
-    } catch(err) {
-      return { success: false, error: err.message };
-    }
-  }
 
   static async fleetSync(action = 'status', options = {}) {
-    var opts = options || {};
-    var commitMsg = opts.commitMsg || `[Fleet Sync] ${new Date().toLocaleString()}`;
-    var targetHost = opts.host || '';
-    var baseUrl = targetHost ? `http://${targetHost}:8080` : '';
-
-    try {
-      var res = await fetch(`${baseUrl}/api/git/fleet-sync`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-Luno-Client': '1' },
-        body: JSON.stringify({
-          action,
-          commitMsg,
-          branch: opts.branch || 'main',
-          autocommit: opts.autocommit !== false,
-          fetch: opts.fetch !== false
-        })
+      var opts = options || {};
+      var commitMsg = opts.commitMsg || `[Fleet Sync] ${new Date().toLocaleString()}`;
+      var targetHost = opts.host || '';
+      var payloadBody = JSON.stringify({
+        action,
+        commitMsg,
+        branch: opts.branch || 'main',
+        autocommit: opts.autocommit !== false,
+        fetch: opts.fetch !== false
       });
-      return await res.json();
-    } catch (err) {
-      return { success: false, error: err.message };
+
+      try {
+        if (targetHost) {
+          return await LunoDeployEngine._apiJson('/api/peer/relay', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-Luno-Client': '1' },
+            body: JSON.stringify({
+              targetHost: targetHost.includes(':') ? targetHost : `${targetHost}:8080`,
+              path: '/api/git/fleet-sync',
+              method: 'POST',
+              timeoutMs: 90000,
+              body: payloadBody
+            })
+          }).then(r => (r && r.data !== undefined ? r.data : r));
+        }
+        return await LunoDeployEngine._apiJson('/api/git/fleet-sync', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-Luno-Client': '1' },
+          body: payloadBody
+        });
+      } catch (err) {
+        return { success: false, error: err.message };
+      }
     }
-  }
 
   static async pullProject(projectName, options = {}) {
-    var pName = projectName || (typeof ClientApp !== 'undefined' && ClientApp.getTargetProject ? ClientApp.getTargetProject() : 'Luno');
-    var opts = options || {};
+      var pName = projectName || (typeof ClientApp !== 'undefined' && ClientApp.getTargetProject ? ClientApp.getTargetProject() : 'Luno');
+      var opts = options || {};
 
-    try {
-      var res = await fetch('/api/git/pull?project=' + encodeURIComponent(pName), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-Luno-Client': '1' },
-        body: JSON.stringify({
-          project: pName,
-          branch: opts.branch || 'main',
-          autocommit: opts.autocommit !== false
-        })
-      });
-      return await res.json();
-    } catch(err) {
-      return { success: false, error: err.message };
+      try {
+        return await LunoDeployEngine._apiJson('/api/git/pull?project=' + encodeURIComponent(pName), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-Luno-Client': '1' },
+          body: JSON.stringify({
+            project: pName,
+            branch: opts.branch || 'main',
+            autocommit: opts.autocommit !== false
+          })
+        });
+      } catch(err) {
+        return { success: false, error: err.message };
+      }
     }
-  }
 
   static async deployProjectToGitHub(projectName, commitMsg, customRemoteUrl, options) {
-    var pName = projectName || (typeof ClientApp !== 'undefined' && ClientApp.getTargetProject ? ClientApp.getTargetProject() : 'Luno');
-    var msg = commitMsg || ('[' + pName + '] Checkpoint ' + new Date().toLocaleString());
-    var opts = options || {};
-    var deployToPages = opts.deployToPages !== false;
+      var pName = projectName || (typeof ClientApp !== 'undefined' && ClientApp.getTargetProject ? ClientApp.getTargetProject() : 'Luno');
+      var msg = commitMsg || ('[' + pName + '] Checkpoint ' + new Date().toLocaleString());
+      var opts = options || {};
+      var deployToPages = opts.deployToPages !== false;
 
-    try {
-      var res = await fetch('/api/deploy?project=' + encodeURIComponent(pName), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-Luno-Client': '1' },
-        body: JSON.stringify({
-          project: pName,
-          commitMsg: msg,
-          deployToPages: deployToPages,
-          token: LunoDeployEngine.getGithubToken()
-        })
-      });
-      return await res.json();
-    } catch (e) {
-      return { success: false, error: e.message };
+      try {
+        return await LunoDeployEngine._apiJson('/api/deploy?project=' + encodeURIComponent(pName), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-Luno-Client': '1' },
+          body: JSON.stringify({
+            project: pName,
+            commitMsg: msg,
+            deployToPages: deployToPages,
+            token: LunoDeployEngine.getGithubToken()
+          })
+        });
+      } catch (e) {
+        return { success: false, error: e.message };
+      }
     }
-  }
-
   static async checkpointTargetProject(projectName, commitMsg, options) {
     var opts = options || {};
     var deployToPages = opts.deployToPages !== false;
@@ -344,19 +351,17 @@ class LunoDeployEngine {
   }
 
   static async getProjectGitStatusLazy(projectName, forceRefresh = false) {
-    if (!forceRefresh && LunoDeployEngine.gitStatusCache.has(projectName)) {
-      return LunoDeployEngine.gitStatusCache.get(projectName);
+      if (!forceRefresh && LunoDeployEngine.gitStatusCache.has(projectName)) {
+        return LunoDeployEngine.gitStatusCache.get(projectName);
+      }
+      try {
+        var data = await LunoDeployEngine._apiJson('/api/git/file-diff?path=all&project=' + encodeURIComponent(projectName));
+        LunoDeployEngine.gitStatusCache.set(projectName, data);
+        return data;
+      } catch(e) {
+        return { success: false, hasGit: false };
+      }
     }
-    try {
-      var res = await fetch('/api/git/file-diff?path=all&project=' + encodeURIComponent(projectName));
-      var data = await res.json();
-      LunoDeployEngine.gitStatusCache.set(projectName, data);
-      return data;
-    } catch(e) {
-      return { success: false, hasGit: false };
-    }
-  }
-
   static async renderProjectDeployPanel(projectName, el, container) {
     if (!container) return;
     container.innerHTML = `<div style="font-size:0.75rem; color:#8b949e; padding:4px 0;">Git repository active on branch <strong>main</strong>.</div>`;
@@ -503,6 +508,31 @@ class LunoDeployEngine {
     btnRefreshStatus.onclick = () => loadData();
     loadData();
   }
+
+  static async _apiJson(url, options) {
+      if (typeof LunoApiClient !== 'undefined' && typeof LunoApiClient.safeJsonFetch === 'function') {
+        return await LunoApiClient.safeJsonFetch(url, options);
+      }
+      var res = await fetch(url, options);
+      return await res.json();
+    }
+
+  static async resolveLivePeerHost() {
+        var isLinux = typeof ClientApp !== 'undefined' && (ClientApp.isLinux || ClientApp.activePlatform === 'linux');
+        try {
+          var res = await LunoDeployEngine._apiJson('/api/peer/list');
+          var peers = (res && Array.isArray(res.peers)) ? res.peers : [];
+          peers.sort(function(a, b) { return (b.lastSeenMs || 0) - (a.lastSeenMs || 0); });
+          var match = peers.find(function(p) {
+            return isLinux ? (p.isMac || p.platform === 'darwin') : (p.isLinux || p.platform === 'linux');
+          });
+          if (match && match.ip) {
+            try { if (typeof localStorage !== 'undefined') localStorage.setItem('luno_peer_host', match.ip); } catch (e) {}
+            return match.ip;
+          }
+        } catch (e) {}
+        return LunoDeployEngine.getPeerHost();
+      }
 }
 
 globalThis.LunoDeployEngine = LunoDeployEngine;

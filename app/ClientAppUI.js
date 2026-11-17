@@ -840,80 +840,86 @@ class ClientAppUI {
   }
 
   static async refreshGitDeckStatus(projectName) {
-      var pName = projectName || ((typeof ClientApp !== 'undefined' && ClientApp.getTargetProject) ? ClientApp.getTargetProject() : 'Luno');
+        var pName = projectName || ((typeof ClientApp !== 'undefined' && ClientApp.getTargetProject) ? ClientApp.getTargetProject() : 'Luno');
 
-      // 1. Query Active Project Git Status
-      var projPill = document.getElementById('deck-project-status-pill');
-      var dirtyBox = document.getElementById('deck-project-dirty-files');
-      var btnCommit = document.getElementById('btn-deck-project-commit');
+        var peerBadge = document.getElementById('deck-peer-indicator');
+        if (peerBadge && typeof LunoDeployEngine !== 'undefined' && LunoDeployEngine.resolveLivePeerHost) {
+          try {
+            var livePeer = await LunoDeployEngine.resolveLivePeerHost();
+            peerBadge.textContent = 'Peer: ' + livePeer + ':8080 ⚙️';
+          } catch (e) {}
+        }
 
-      if (projPill) {
-        projPill.textContent = 'Checking...';
-        projPill.style.color = '#00f2fe';
-      }
-
-      try {
-        var diffRes = await LunoApiClient.fetchFileDiff('all', pName);
-        var modifiedFiles = (diffRes && Array.isArray(diffRes.modifiedFiles)) ? diffRes.modifiedFiles : [];
+        var projPill = document.getElementById('deck-project-status-pill');
+        var dirtyBox = document.getElementById('deck-project-dirty-files');
+        var btnCommit = document.getElementById('btn-deck-project-commit');
 
         if (projPill) {
-          if (modifiedFiles.length > 0) {
-            projPill.textContent = `● ${modifiedFiles.length} file(s) modified`;
-            projPill.style.color = '#ff9800';
-            projPill.style.background = 'rgba(255,152,0,0.15)';
-            projPill.style.borderColor = '#ff9800';
+          projPill.textContent = 'Checking...';
+          projPill.style.color = '#00f2fe';
+        }
 
-            if (dirtyBox) {
-              dirtyBox.style.display = 'block';
-              var fileNames = modifiedFiles.map(f => `• ${f.path}`).join('  ');
-              dirtyBox.innerHTML = `<strong>Modified Files (${modifiedFiles.length}):</strong><br>${fileNames}`;
-            }
+        try {
+          var diffRes = await LunoApiClient.fetchFileDiff('all', pName);
+          var modifiedFiles = (diffRes && Array.isArray(diffRes.modifiedFiles)) ? diffRes.modifiedFiles : [];
 
-            if (btnCommit) {
-              btnCommit.textContent = `📸 Checkpoint & Deploy [${pName}] (${modifiedFiles.length} changed)`;
-              btnCommit.style.background = '#238636';
-              btnCommit.style.boxShadow = '0 4px 12px rgba(35,134,54,0.4)';
-            }
-          } else {
-            projPill.textContent = `✓ Clean & up to date with Pages`;
-            projPill.style.color = '#10b981';
-            projPill.style.background = 'rgba(16,185,129,0.15)';
-            projPill.style.borderColor = '#238636';
+          if (projPill) {
+            if (modifiedFiles.length > 0) {
+              projPill.textContent = `● ${modifiedFiles.length} file(s) modified`;
+              projPill.style.color = '#ff9800';
+              projPill.style.background = 'rgba(255,152,0,0.15)';
+              projPill.style.borderColor = '#ff9800';
 
-            if (dirtyBox) {
-              dirtyBox.style.display = 'none';
-              dirtyBox.innerHTML = '';
-            }
+              if (dirtyBox) {
+                dirtyBox.style.display = 'block';
+                var fileNames = modifiedFiles.map(f => `• ${f.path}`).join('  ');
+                dirtyBox.innerHTML = `<strong>Modified Files (${modifiedFiles.length}):</strong><br>${fileNames}`;
+              }
 
-            if (btnCommit) {
-              btnCommit.textContent = `✓ [${pName}] Clean (Re-deploy if desired)`;
-              btnCommit.style.background = '#21262d';
-              btnCommit.style.boxShadow = 'none';
+              if (btnCommit) {
+                btnCommit.textContent = `📸 Checkpoint & Deploy [${pName}] (${modifiedFiles.length} changed)`;
+                btnCommit.style.background = '#238636';
+                btnCommit.style.boxShadow = '0 4px 12px rgba(35,134,54,0.4)';
+              }
+            } else {
+              projPill.textContent = `✓ Clean & up to date with Pages`;
+              projPill.style.color = '#10b981';
+              projPill.style.background = 'rgba(16,185,129,0.15)';
+              projPill.style.borderColor = '#238636';
+
+              if (dirtyBox) {
+                dirtyBox.style.display = 'none';
+                dirtyBox.innerHTML = '';
+              }
+
+              if (btnCommit) {
+                btnCommit.textContent = `✓ [${pName}] Clean (Re-deploy if desired)`;
+                btnCommit.style.background = '#21262d';
+                btnCommit.style.boxShadow = 'none';
+              }
             }
           }
-        }
-      } catch(e) {}
+        } catch(e) {}
 
-      // 2. Query Fleet-Wide Status
-      var fleetPill = document.getElementById('deck-fleet-status-pill');
-      try {
-        var fleetRes = await LunoDeployEngine.getFleetStatus(false);
-        var dirtyProjects = (fleetRes && fleetRes.dirtyProjects) || [];
-        if (fleetPill) {
-          if (dirtyProjects.length > 0) {
-            fleetPill.textContent = `⚠️ ${dirtyProjects.length} project(s) modified in fleet`;
-            fleetPill.style.color = '#ff9800';
-            fleetPill.style.background = 'rgba(255,152,0,0.15)';
-            fleetPill.style.borderColor = '#ff9800';
-          } else {
-            fleetPill.textContent = `All ${fleetRes.totalRepos || 44} repos in sync ✓`;
-            fleetPill.style.color = '#10b981';
-            fleetPill.style.background = 'rgba(16,185,129,0.15)';
-            fleetPill.style.borderColor = '#238636';
+        var fleetPill = document.getElementById('deck-fleet-status-pill');
+        try {
+          var fleetRes = await LunoDeployEngine.getFleetStatus(false);
+          var dirtyProjects = (fleetRes && fleetRes.dirtyProjects) || [];
+          if (fleetPill) {
+            if (dirtyProjects.length > 0) {
+              fleetPill.textContent = `⚠️ ${dirtyProjects.length} project(s) modified in fleet`;
+              fleetPill.style.color = '#ff9800';
+              fleetPill.style.background = 'rgba(255,152,0,0.15)';
+              fleetPill.style.borderColor = '#ff9800';
+            } else {
+              fleetPill.textContent = `All ${fleetRes.totalRepos || 44} repos in sync ✓`;
+              fleetPill.style.color = '#10b981';
+              fleetPill.style.background = 'rgba(16,185,129,0.15)';
+              fleetPill.style.borderColor = '#238636';
+            }
           }
-        }
-      } catch(e) {}
-  }
+        } catch(e) {}
+    }
 }
 
 globalThis.ClientAppUI = ClientAppUI;

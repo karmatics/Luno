@@ -73,230 +73,279 @@ class ClientAppPaster {
   }
 
   static async executeSave(overrideText) {
-      var targetApp = globalThis.ClientAppCore || globalThis.ClientApp;
-      var input = document.getElementById('code-input') || document.getElementById('payload-input');
-      var rawText = overrideText || (input ? input.value : '');
-      if (!rawText || !rawText.trim()) return;
+        var targetApp = globalThis.ClientAppCore || globalThis.ClientApp;
+        var input = document.getElementById('code-input') || document.getElementById('payload-input');
+        var rawText = overrideText || (input ? input.value : '');
+        if (!rawText || !rawText.trim()) return;
 
-      try {
-        var targetProj = (typeof ClientApp !== 'undefined' && ClientApp.getTargetProject) ? ClientApp.getTargetProject() : 'Luno';
-        var payloadHash = (typeof CodeDiffer !== 'undefined' && CodeDiffer.fastHash)
-          ? CodeDiffer.fastHash(rawText.trim())
-          : String(rawText.trim().length);
+        try {
+          var targetProj = (typeof ClientApp !== 'undefined' && ClientApp.getTargetProject) ? ClientApp.getTargetProject() : 'Luno';
+          var payloadHash = (typeof CodeDiffer !== 'undefined' && CodeDiffer.fastHash)
+            ? CodeDiffer.fastHash(rawText.trim())
+            : String(rawText.trim().length);
 
-        if (ClientAppPaster._lastPastedPayloadHash === payloadHash && ClientAppPaster._lastCalculatedDiffs?.length > 0) {
-          var duplicateNotice = 'ℹ️ IDEMPOTENCY GUARD: You pasted an identical payload block (CRC: ' + payloadHash + '). ' +
-            'All files on disk already match this payload.\n\n' +
-            (ClientAppPaster._lastPastedSummary || '') + '\n\n' +
-            'Your active diff view has been preserved without wiping out.';
-          if (targetApp && targetApp.showFeedback) targetApp.showFeedback(duplicateNotice, 'info', { fileDiffs: ClientAppPaster._lastCalculatedDiffs });
-          if (targetApp && targetApp.showToast) targetApp.showToast('Already applied — previous diffs preserved!', 'info', '🛡️');
-          return;
-        }
+          if (ClientAppPaster._lastPastedPayloadHash === payloadHash && ClientAppPaster._lastCalculatedDiffs?.length > 0) {
+            var duplicateNotice = 'ℹ️ IDEMPOTENCY GUARD: You pasted an identical payload block (CRC: ' + payloadHash + '). ' +
+              'All files on disk already match this payload.\n\n' +
+              (ClientAppPaster._lastPastedSummary || '') + '\n\n' +
+              'Your active diff view has been preserved without wiping out.';
+            if (targetApp && targetApp.showFeedback) targetApp.showFeedback(duplicateNotice, 'info', { fileDiffs: ClientAppPaster._lastCalculatedDiffs });
+            if (targetApp && targetApp.showToast) targetApp.showToast('Already applied — previous diffs preserved!', 'info', '🛡️');
+            return;
+          }
 
-        var rawPayload = { files: [], serverScript: '', clientScript: '', requests: [], debugLogs: [] };
-        if (typeof LunoPayloadParser !== 'undefined' && LunoPayloadParser.parse) {
-          rawPayload = LunoPayloadParser.parse(rawText);
-        }
+          var rawPayload = { files: [], serverScript: '', clientScript: '', peerServerScripts: [], requests: [], debugLogs: [] };
+          if (typeof LunoPayloadParser !== 'undefined' && LunoPayloadParser.parse) {
+            rawPayload = LunoPayloadParser.parse(rawText);
+          }
 
-        var hasRawContainers = (rawPayload.files && rawPayload.files.length > 0) ||
-                               Boolean(rawPayload.serverScript) ||
-                               Boolean(rawPayload.clientScript) ||
-                               (rawPayload.requests && rawPayload.requests.length > 0);
+          var hasRawContainers = (rawPayload.files && rawPayload.files.length > 0) ||
+                                 Boolean(rawPayload.serverScript) ||
+                                 Boolean(rawPayload.clientScript) ||
+                                 (rawPayload.peerServerScripts && rawPayload.peerServerScripts.length > 0) ||
+                                 (rawPayload.requests && rawPayload.requests.length > 0);
 
-        if (!hasRawContainers && rawText.trim().length > 20) {
-          var zeroWarn = '⚠️ PARSER WARNING: Input payload contained ' + rawText.trim().length + ' characters, but 0 valid HTML containers were detected.';
-          if (targetApp && targetApp.showFeedback) targetApp.showFeedback(zeroWarn, 'error');
-          if (targetApp && targetApp.showToast) targetApp.showToast('0 HTML Containers Found!', 'error', '⚠️');
-          return;
-        }
+          if (!hasRawContainers && rawText.trim().length > 20) {
+            var zeroWarn = '⚠️ PARSER WARNING: Input payload contained ' + rawText.trim().length + ' characters, but 0 valid HTML containers were detected.';
+            if (targetApp && targetApp.showFeedback) targetApp.showFeedback(zeroWarn, 'error');
+            if (targetApp && targetApp.showToast) targetApp.showToast('0 HTML Containers Found!', 'error', '⚠️');
+            return;
+          }
 
-        var normKey = function(p) {
-          if (!p) return '';
-          var clean = p.replace(/\\/g, '/').replace(/^\/+/, '');
-          if (clean.startsWith('Luno/')) clean = clean.slice(5);
-          if (targetProj && clean.startsWith(targetProj + '/')) clean = clean.slice(targetProj.length + 1);
-          return clean;
-        };
+          var normKey = function(p) {
+            if (!p) return '';
+            var clean = p.replace(/\\/g, '/').replace(/^\/+/, '');
+            if (clean.startsWith('Luno/')) clean = clean.slice(5);
+            if (targetProj && clean.startsWith(targetProj + '/')) clean = clean.slice(targetProj.length + 1);
+            return clean;
+          };
 
-        var originalFileContents = new Map();
-        if (Array.isArray(rawPayload.files)) {
-          for (var pIdx = 0; pIdx < rawPayload.files.length; pIdx++) {
-            var rawFileObj = rawPayload.files[pIdx];
-            if (rawFileObj && rawFileObj.filePath) {
-              var nKey = normKey(rawFileObj.filePath);
-              if (!originalFileContents.has(nKey)) {
-                try {
-                  var preRead = await LunoApiClient.fetchFsRead(rawFileObj.filePath, targetProj);
-                  var content = (preRead && preRead.success && preRead.content !== undefined) ? preRead.content : '';
-                  originalFileContents.set(nKey, content);
-                  originalFileContents.set(rawFileObj.filePath, content);
-                } catch (e) {
-                  originalFileContents.set(nKey, '');
-                  originalFileContents.set(rawFileObj.filePath, '');
+          var originalFileContents = new Map();
+          if (Array.isArray(rawPayload.files)) {
+            for (var pIdx = 0; pIdx < rawPayload.files.length; pIdx++) {
+              var rawFileObj = rawPayload.files[pIdx];
+              if (rawFileObj && rawFileObj.filePath) {
+                var nKey = normKey(rawFileObj.filePath);
+                if (!originalFileContents.has(nKey)) {
+                  try {
+                    var preRead = await LunoApiClient.fetchFsRead(rawFileObj.filePath, targetProj);
+                    var content = (preRead && preRead.success && preRead.content !== undefined) ? preRead.content : '';
+                    originalFileContents.set(nKey, content);
+                    originalFileContents.set(rawFileObj.filePath, content);
+                  } catch (e) {
+                    originalFileContents.set(nKey, '');
+                    originalFileContents.set(rawFileObj.filePath, '');
+                  }
                 }
               }
             }
           }
-        }
 
-        var lunoMeta = {};
-        try {
-          if (typeof LunoApiClient !== 'undefined' && LunoApiClient.fetchFsRead) {
-            var metaRes = await LunoApiClient.fetchFsRead('luno.json', targetProj);
-            if (metaRes && metaRes.content) lunoMeta = JSON.parse(metaRes.content);
-          }
-        } catch (e) {}
-
-        var finalPayload = rawPayload;
-        if (typeof LunoManifestDecisionEngine !== 'undefined' && LunoManifestDecisionEngine.processPayload) {
-          finalPayload = await LunoManifestDecisionEngine.processPayload(rawPayload, lunoMeta, targetProj);
-        }
-        if (finalPayload && typeof finalPayload === 'object' && targetProj) {
-          finalPayload.project = targetProj;
-        }
-
-        var calculatedFileDiffs = [];
-        if (typeof CodeDiffer !== 'undefined' && Array.isArray(finalPayload.files)) {
-          finalPayload.files.forEach(function(savedFile) {
-            var nKey = normKey(savedFile.filePath);
-            var oldStr = originalFileContents.get(nKey) || originalFileContents.get(savedFile.filePath) || '';
-            var newStr = savedFile.content || '';
-            var diffAnalysis = CodeDiffer.analyzeDiff(oldStr, newStr, savedFile.filePath);
-            var summaryMatch = (finalPayload.patchActionsSummary || []).find(function(s) {
-              return normKey(s.path) === nKey || s.path === savedFile.filePath;
-            });
-            calculatedFileDiffs.push({
-              filePath: savedFile.filePath,
-              target: summaryMatch ? (summaryMatch.target || savedFile.filePath) : savedFile.filePath,
-              mode: summaryMatch ? (summaryMatch.mode || 'direct-ast-apply') : 'full-file',
-              oldContent: oldStr,
-              newContent: newStr,
-              linesAdded: diffAnalysis.linesAdded,
-              linesRemoved: diffAnalysis.linesRemoved,
-              bytesBefore: diffAnalysis.bytesBefore,
-              bytesAfter: diffAnalysis.bytesAfter,
-              byteDelta: diffAnalysis.byteDelta
-            });
-          });
-        }
-
-        var netLineChanges = calculatedFileDiffs.reduce(function(acc, d) { return acc + d.linesAdded + d.linesRemoved; }, 0);
-        if (netLineChanges === 0 && calculatedFileDiffs.length > 0 && !finalPayload.serverScript && !finalPayload.clientScript) {
-          var noChangeNotice = '✓ IDEMPOTENT PASTE: All files already match disk storage.\n' +
-            (ClientAppPaster._lastPastedSummary ? ('\nPrevious Modifications (Preserved):\n' + ClientAppPaster._lastPastedSummary) : '');
-          if (targetApp && targetApp.showFeedback) targetApp.showFeedback(noChangeNotice, 'info', { fileDiffs: ClientAppPaster._lastCalculatedDiffs || calculatedFileDiffs });
-          if (targetApp && targetApp.showToast) targetApp.showToast('All files match storage (already applied)', 'info', '✓');
-          return;
-        }
-
-        var data = null;
-        if ((finalPayload.files && finalPayload.files.length > 0) || Boolean(finalPayload.serverScript)) {
-          data = await LunoApiClient.savePayload(finalPayload, targetProj);
-        } else {
-          data = { success: true, count: 0, modifiedCount: 0 };
-        }
-
-        var totalAdd = calculatedFileDiffs.reduce(function(s, d) { return s + (d.linesAdded || 0); }, 0);
-        var totalRem = calculatedFileDiffs.reduce(function(s, d) { return s + (d.linesRemoved || 0); }, 0);
-        var totalContainers = (rawPayload.files ? rawPayload.files.length : 0) +
-                              (rawPayload.serverScript ? 1 : 0) +
-                              (rawPayload.clientScript ? 1 : 0) +
-                              (rawPayload.requests ? rawPayload.requests.length : 0);
-
-        var clientSummary = "🔍 CLIENT PARSER SUMMARY:\n• Target: " + (targetProj || "Luno") + "\n";
-        clientSummary += "• Containers: " + totalContainers + "\n";
-        clientSummary += "• Net Diff: +" + totalAdd + " / -" + totalRem + " lines (CRC: " + payloadHash + ")\n";
-
-        if (calculatedFileDiffs.length > 0) {
-          clientSummary += "• File Modifications (" + calculatedFileDiffs.length + "):\n";
-          calculatedFileDiffs.forEach(function(d) {
-            var cleanName = d.filePath.replace(/^Luno\//, '').replace(new RegExp('^' + targetProj + '/'), '');
-            var sign = d.byteDelta >= 0 ? '+' : '';
-            var modeLabel = d.mode === 'direct-ast-apply' ? '[AST Patch]' : (d.mode === 'direct-html-apply' ? '[HTML Block]' : (d.mode === 'server-script' ? '[Server Script]' : '[Full File]'));
-            clientSummary += "  - " + cleanName + ": +" + d.linesAdded + " / -" + d.linesRemoved + " LOC (" + sign + d.byteDelta + " B) " + modeLabel + "\n";
-          });
-        }
-
-        var finalFeedback = clientSummary + "\n📊 EXECUTION RESPONSE:\n" + (data.llmFeedback || JSON.stringify(data, null, 2));
-
-        if (finalPayload.clientScript && finalPayload.clientScript.trim()) {
+          var lunoMeta = {};
           try {
-            var AsyncFn = Object.getPrototypeOf(async function(){}).constructor;
-            var clientFn = new AsyncFn('UITools', 'ClientApp', finalPayload.clientScript);
-            var clientResult = await clientFn(globalThis.UITools, globalThis.ClientApp);
-            if (clientResult !== undefined) {
-              console.log('[Luno Client Script Result]', clientResult);
-              finalFeedback += "\n\n🖥️ CLIENT SCRIPT OUTPUT:\n" + (typeof clientResult === 'object' ? JSON.stringify(clientResult, null, 2) : String(clientResult));
+            if (typeof LunoApiClient !== 'undefined' && LunoApiClient.fetchFsRead) {
+              var metaRes = await LunoApiClient.fetchFsRead('luno.json', targetProj);
+              if (metaRes && metaRes.content) lunoMeta = JSON.parse(metaRes.content);
             }
-          } catch (cErr) {
-            console.error('[Luno Client Script Error]', cErr);
-            finalFeedback += "\n\n❌ CLIENT SCRIPT ERROR:\n" + cErr.message;
-            if (targetApp && targetApp.showToast) targetApp.showToast('Client Script Error: ' + cErr.message, 'error', '❌');
-          }
-        }
+          } catch (e) {}
 
-        ClientAppPaster._lastPastedPayloadHash = payloadHash;
-        ClientAppPaster._lastCalculatedDiffs = calculatedFileDiffs;
-        ClientAppPaster._lastPastedSummary = clientSummary;
-
-        if (globalThis.CadPlanItemNotes && typeof globalThis.CadPlanItemNotes.resolveNotesFromLlmPayload === 'function') {
-          const resolvedList = await globalThis.CadPlanItemNotes.resolveNotesFromLlmPayload(rawText);
-          if (resolvedList.length > 0 && targetApp && targetApp.showToast) {
-            targetApp.showToast(`🧹 Archived ${resolvedList.length} resolved living spec directive(s)!`, 'success', '✨');
+          var finalPayload = rawPayload;
+          if (typeof LunoManifestDecisionEngine !== 'undefined' && LunoManifestDecisionEngine.processPayload) {
+            finalPayload = await LunoManifestDecisionEngine.processPayload(rawPayload, lunoMeta, targetProj);
           }
-        }
-
-        if (targetApp && targetApp.showFeedback) {
-          targetApp.showFeedback(finalFeedback, data && data.success ? "success" : "error", { fileDiffs: calculatedFileDiffs });
-        }
-
-        var inboxBadge = document.getElementById('inbox-metrics-badge');
-        if (inboxBadge && calculatedFileDiffs.length > 0) {
-          inboxBadge.innerHTML = '<span style="color:#3fb950; font-weight:bold;">✅ Saved ' + calculatedFileDiffs.length + ' file(s): +' + totalAdd + ' / -' + totalRem + ' LOC</span>';
-        }
-
-        if (data && data.success) {
-          if (input) input.value = "";
-          if (typeof LunoHistoryManager !== 'undefined' && calculatedFileDiffs.length > 0) {
-            LunoHistoryManager.recordChanges(calculatedFileDiffs, targetProj).catch(function() {});
+          if (finalPayload && typeof finalPayload === 'object' && targetProj) {
+            finalPayload.project = targetProj;
           }
-          if (typeof LunoLoader !== 'undefined' && LunoLoader.applyPatchLog) {
-            await LunoLoader.applyPatchLog(targetProj);
+
+          var calculatedFileDiffs = [];
+          if (typeof CodeDiffer !== 'undefined' && Array.isArray(finalPayload.files)) {
+            finalPayload.files.forEach(function(savedFile) {
+              var nKey = normKey(savedFile.filePath);
+              var oldStr = originalFileContents.get(nKey) || originalFileContents.get(savedFile.filePath) || '';
+              var newStr = savedFile.content || '';
+              var diffAnalysis = CodeDiffer.analyzeDiff(oldStr, newStr, savedFile.filePath);
+              var summaryMatch = (finalPayload.patchActionsSummary || []).find(function(s) {
+                return normKey(s.path) === nKey || s.path === savedFile.filePath;
+              });
+              calculatedFileDiffs.push({
+                filePath: savedFile.filePath,
+                target: summaryMatch ? (summaryMatch.target || savedFile.filePath) : savedFile.filePath,
+                mode: summaryMatch ? (summaryMatch.mode || 'direct-ast-apply') : 'full-file',
+                oldContent: oldStr,
+                newContent: newStr,
+                linesAdded: diffAnalysis.linesAdded,
+                linesRemoved: diffAnalysis.linesRemoved,
+                bytesBefore: diffAnalysis.bytesBefore,
+                bytesAfter: diffAnalysis.bytesAfter,
+                byteDelta: diffAnalysis.byteDelta
+              });
+            });
           }
-          if (typeof ClientApp !== 'undefined' && ClientApp.fetchCodebaseMetrics) {
-            await ClientApp.fetchCodebaseMetrics(targetProj);
+
+          var netLineChanges = calculatedFileDiffs.reduce(function(acc, d) { return acc + d.linesAdded + d.linesRemoved; }, 0);
+          if (netLineChanges === 0 && calculatedFileDiffs.length > 0 && !finalPayload.serverScript && !finalPayload.clientScript && !(rawPayload.peerServerScripts && rawPayload.peerServerScripts.length)) {
+            var noChangeNotice = '✓ IDEMPOTENT PASTE: All files already match disk storage.\n' +
+              (ClientAppPaster._lastPastedSummary ? ('\nPrevious Modifications (Preserved):\n' + ClientAppPaster._lastPastedSummary) : '');
+            if (targetApp && targetApp.showFeedback) targetApp.showFeedback(noChangeNotice, 'info', { fileDiffs: ClientAppPaster._lastCalculatedDiffs || calculatedFileDiffs });
+            if (targetApp && targetApp.showToast) targetApp.showToast('All files match storage (already applied)', 'info', '✓');
+            return;
           }
-          if (targetProj && typeof fetch !== 'undefined') {
-            fetch('/api/git/conflicts?project=' + encodeURIComponent(targetProj))
-              .then(r => r.json())
-              .then(cData => {
-                if (cData && cData.hasConflicts) {
-                  fetch('/api/git/resolve-conflict', {
+
+          var data = null;
+          if ((finalPayload.files && finalPayload.files.length > 0) || Boolean(finalPayload.serverScript)) {
+            data = await LunoApiClient.savePayload(finalPayload, targetProj);
+          } else {
+            data = { success: true, count: 0, modifiedCount: 0 };
+          }
+
+          var peerFeedbacks = [];
+          if (Array.isArray(rawPayload.peerServerScripts) && rawPayload.peerServerScripts.length > 0) {
+            var knownPeers = [];
+            try {
+              var pListRes = await fetch('/api/peer/list');
+              var pListJson = await pListRes.json();
+              if (pListJson && Array.isArray(pListJson.peers)) knownPeers = pListJson.peers;
+            } catch (e) {}
+
+            for (var psIdx = 0; psIdx < rawPayload.peerServerScripts.length; psIdx++) {
+              var psItem = rawPayload.peerServerScripts[psIdx];
+              var rawHost = String(psItem.host || '').trim();
+              var resolvedHost = rawHost;
+              if (rawHost.toLowerCase() === 'linux') {
+                var lp = knownPeers.find(function(p) { return p.isLinux || p.platform === 'linux'; });
+                resolvedHost = (lp && lp.ip) || 'rob-HP-ZBook-15-G6.local';
+              } else if (rawHost.toLowerCase() === 'mac') {
+                var mp = knownPeers.find(function(p) { return p.isMac || p.platform === 'darwin'; });
+                resolvedHost = (mp && mp.ip) || 'mac-mini-rob.local';
+              }
+
+              try {
+                var relayResp = await fetch('/api/peer/relay', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json', 'X-Luno-Client': '1' },
+                  body: JSON.stringify({
+                    targetHost: resolvedHost.includes(':') ? resolvedHost : (resolvedHost + ':8080'),
+                    path: '/api/save?project=' + encodeURIComponent(targetProj),
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ project: targetProj })
-                  }).then(r => r.json()).then(res => {
-                    if (res && res.success && targetApp && targetApp.showToast) {
-                      targetApp.showToast(`🎉 Closed and committed Git conflict for [${targetProj}]!`, 'success', '✓');
-                    }
-                  }).catch(() => {});
-                }
-              }).catch(() => {});
+                    timeoutMs: 45000,
+                    body: JSON.stringify({ files: [], serverScript: psItem.code, project: targetProj })
+                  })
+                });
+                var relayJson = await relayResp.json();
+                var pFeedback = (relayJson && relayJson.data && relayJson.data.llmFeedback)
+                  ? relayJson.data.llmFeedback
+                  : JSON.stringify(relayJson, null, 2);
+                peerFeedbacks.push('🌐 PEER OUTPUT [' + rawHost + ' -> ' + resolvedHost + ']:\n' + pFeedback);
+              } catch (peerErr) {
+                peerFeedbacks.push('❌ PEER ERROR [' + rawHost + ' -> ' + resolvedHost + ']: ' + peerErr.message);
+              }
+            }
           }
-          if (targetApp && targetApp.showToast) {
-            var toastDiff = calculatedFileDiffs.length > 0 ? (' (+' + totalAdd + '/-' + totalRem + ' LOC)') : '';
-            var actionLabel = finalPayload.serverScript ? 'Executed server script' : 'Saved ' + (data.modifiedCount || data.count || 0) + ' file(s)';
-            targetApp.showToast(actionLabel + toastDiff + '!', 'success', '💾');
+
+          var totalAdd = calculatedFileDiffs.reduce(function(s, d) { return s + (d.linesAdded || 0); }, 0);
+          var totalRem = calculatedFileDiffs.reduce(function(s, d) { return s + (d.linesRemoved || 0); }, 0);
+          var totalContainers = (rawPayload.files ? rawPayload.files.length : 0) +
+                                (rawPayload.serverScript ? 1 : 0) +
+                                (rawPayload.clientScript ? 1 : 0) +
+                                (rawPayload.peerServerScripts ? rawPayload.peerServerScripts.length : 0) +
+                                (rawPayload.requests ? rawPayload.requests.length : 0);
+
+          var clientSummary = "🔍 CLIENT PARSER SUMMARY:\n• Target: " + (targetProj || "Luno") + "\n";
+          clientSummary += "• Containers: " + totalContainers + "\n";
+          clientSummary += "• Net Diff: +" + totalAdd + " / -" + totalRem + " lines (CRC: " + payloadHash + ")\n";
+
+          if (calculatedFileDiffs.length > 0) {
+            clientSummary += "• File Modifications (" + calculatedFileDiffs.length + "):\n";
+            calculatedFileDiffs.forEach(function(d) {
+              var cleanName = d.filePath.replace(/^Luno\//, '').replace(new RegExp('^' + targetProj + '/'), '');
+              var sign = d.byteDelta >= 0 ? '+' : '';
+              var modeLabel = d.mode === 'direct-ast-apply' ? '[AST Patch]' : (d.mode === 'direct-html-apply' ? '[HTML Block]' : (d.mode === 'server-script' ? '[Server Script]' : '[Full File]'));
+              clientSummary += "  - " + cleanName + ": +" + d.linesAdded + " / -" + d.linesRemoved + " LOC (" + sign + d.byteDelta + " B) " + modeLabel + "\n";
+            });
           }
-        } else {
-          throw new Error((data && data.error) || 'Save failed');
+
+          var finalFeedback = clientSummary + "\n📊 EXECUTION RESPONSE:\n" + ((data && data.llmFeedback) || JSON.stringify(data, null, 2));
+          if (peerFeedbacks.length > 0) {
+            finalFeedback += "\n\n" + peerFeedbacks.join("\n\n");
+          }
+
+          if (finalPayload.clientScript && finalPayload.clientScript.trim()) {
+            try {
+              var AsyncFn = Object.getPrototypeOf(async function(){}).constructor;
+              var clientFn = new AsyncFn('UITools', 'ClientApp', finalPayload.clientScript);
+              var clientResult = await clientFn(globalThis.UITools, globalThis.ClientApp);
+              if (clientResult !== undefined) {
+                console.log('[Luno Client Script Result]', clientResult);
+                finalFeedback += "\n\n🖥️ CLIENT SCRIPT OUTPUT:\n" + (typeof clientResult === 'object' ? JSON.stringify(clientResult, null, 2) : String(clientResult));
+              }
+            } catch (cErr) {
+              console.error('[Luno Client Script Error]', cErr);
+              finalFeedback += "\n\n❌ CLIENT SCRIPT ERROR:\n" + cErr.message;
+              if (targetApp && targetApp.showToast) targetApp.showToast('Client Script Error: ' + cErr.message, 'error', '❌');
+            }
+          }
+
+          ClientAppPaster._lastPastedPayloadHash = payloadHash;
+          ClientAppPaster._lastCalculatedDiffs = calculatedFileDiffs;
+          ClientAppPaster._lastPastedSummary = clientSummary;
+
+          if (globalThis.CadPlanItemNotes && typeof globalThis.CadPlanItemNotes.resolveNotesFromLlmPayload === 'function') {
+            const resolvedList = await globalThis.CadPlanItemNotes.resolveNotesFromLlmPayload(rawText);
+            if (resolvedList.length > 0 && targetApp && targetApp.showToast) {
+              targetApp.showToast(`🧹 Archived ${resolvedList.length} resolved living spec directive(s)!`, 'success', '✨');
+            }
+          }
+
+          if (targetApp && targetApp.showFeedback) {
+            targetApp.showFeedback(finalFeedback, data && data.success ? "success" : "error", { fileDiffs: calculatedFileDiffs });
+          }
+
+          var inboxBadge = document.getElementById('inbox-metrics-badge');
+          if (inboxBadge && calculatedFileDiffs.length > 0) {
+            inboxBadge.innerHTML = '<span style="color:#3fb950; font-weight:bold;">✅ Saved ' + calculatedFileDiffs.length + ' file(s): +' + totalAdd + ' / -' + totalRem + ' LOC</span>';
+          }
+
+          if (data && data.success) {
+            if (input) input.value = "";
+            if (typeof LunoHistoryManager !== 'undefined' && calculatedFileDiffs.length > 0) {
+              LunoHistoryManager.recordChanges(calculatedFileDiffs, targetProj).catch(function() {});
+            }
+            if (typeof LunoLoader !== 'undefined' && LunoLoader.applyPatchLog) {
+              await LunoLoader.applyPatchLog(targetProj);
+            }
+            if (typeof ClientApp !== 'undefined' && ClientApp.fetchCodebaseMetrics) {
+              await ClientApp.fetchCodebaseMetrics(targetProj);
+            }
+            if (targetProj && typeof fetch !== 'undefined') {
+              fetch('/api/git/conflicts?project=' + encodeURIComponent(targetProj))
+                .then(r => r.json())
+                .then(cData => {
+                  if (cData && cData.hasConflicts) {
+                    fetch('/api/git/resolve-conflict', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ project: targetProj })
+                    }).then(r => r.json()).then(res => {
+                      if (res && res.success && targetApp && targetApp.showToast) {
+                        targetApp.showToast(`🎉 Closed and committed Git conflict for [${targetProj}]!`, 'success', '✓');
+                      }
+                    }).catch(() => {});
+                  }
+                }).catch(() => {});
+            }
+            if (targetApp && targetApp.showToast) {
+              var toastDiff = calculatedFileDiffs.length > 0 ? (' (+' + totalAdd + '/-' + totalRem + ' LOC)') : '';
+              var actionLabel = finalPayload.serverScript ? 'Executed server script' : 'Saved ' + (data.modifiedCount || data.count || 0) + ' file(s)';
+              targetApp.showToast(actionLabel + toastDiff + '!', 'success', '💾');
+            }
+          } else {
+            throw new Error((data && data.error) || 'Save failed');
+          }
+        } catch (err) {
+          if (targetApp && targetApp.showFeedback) targetApp.showFeedback("❌ Error: " + err.message, "error");
+          if (targetApp && targetApp.showToast) targetApp.showToast("Save Error: " + err.message, "error", "❌");
         }
-      } catch (err) {
-        if (targetApp && targetApp.showFeedback) targetApp.showFeedback("❌ Error: " + err.message, "error");
-        if (targetApp && targetApp.showToast) targetApp.showToast("Save Error: " + err.message, "error", "❌");
       }
-    }
 }
 
 globalThis.ClientAppPaster = ClientAppPaster;
