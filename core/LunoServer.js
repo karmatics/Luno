@@ -1787,10 +1787,10 @@ static serveIndex(req, res) {
                 const envOpts = {
                   cwd: projDir,
                   encoding: 'utf8',
-                  timeout: 12000,
+                  timeout: 30000,
                   env: Object.assign({}, process.env, {
                     GIT_TERMINAL_PROMPT: '0',
-                    GIT_SSH_COMMAND: 'ssh -o StrictHostKeyChecking=accept-new -o BatchMode=yes -o ConnectTimeout=5'
+                    GIT_SSH_COMMAND: 'ssh -o StrictHostKeyChecking=accept-new -o BatchMode=yes -o ConnectTimeout=6'
                   })
                 };
 
@@ -1817,7 +1817,7 @@ static serveIndex(req, res) {
                   let aheadCount = 0;
 
                   if (doFetch && remoteUrl) {
-                    await pExec(`git fetch -q origin ${currentBranch}`, { ...envOpts, timeout: 6000 });
+                    await pExec(`git fetch -q origin ${currentBranch}`, { ...envOpts, timeout: 8000 });
                     const behindRes = await pExec(`git rev-list --count HEAD..origin/${currentBranch}`, envOpts);
                     const aheadRes = await pExec(`git rev-list --count origin/${currentBranch}..HEAD`, envOpts);
                     behindCount = parseInt(behindRes.stdout.trim() || '0', 10) || 0;
@@ -1875,6 +1875,10 @@ static serveIndex(req, res) {
                       pullRes = await pExec(`git pull --rebase --autostash origin ${branch}`, envOpts);
                     }
                   } else {
+                    const combinedErr = (fetchRes.stdout || '') + (fetchRes.stderr || '');
+                    if (combinedErr.includes('Repository not found')) {
+                      return { name: item, action: 'pull', success: true, skipped: true, missingRemote: true, output: 'No GitHub repo yet (skipped)' };
+                    }
                     const httpsPullUrl = `https://github.com/${account}/${item}.git`;
                     pullRes = await pExec(`git pull --rebase --autostash ${httpsPullUrl} ${branch}`, envOpts);
                   }
@@ -1915,13 +1919,17 @@ static serveIndex(req, res) {
                   }
 
                   const pushRes = await pExec(`git push -u origin ${branch}`, envOpts);
+                  const pushOut = (pushRes.stdout || pushRes.stderr).trim();
+                  if (!pushRes.ok && pushOut.includes('Repository not found')) {
+                    return { name: item, action: 'push', success: true, skipped: true, missingRemote: true, output: 'No GitHub repo yet (skipped)' };
+                  }
 
                   return {
                     name: item,
                     action: 'push',
                     success: pushRes.ok,
                     changesCommitted,
-                    output: (pushRes.stdout || pushRes.stderr).trim() || 'Everything up-to-date'
+                    output: pushOut || 'Everything up-to-date'
                   };
                 }
               });
@@ -1952,7 +1960,6 @@ static serveIndex(req, res) {
           }
         });
       }
-
   static handleGitPull(req, res, url) {
           let body = '';
           req.on('data', chunk => { body += chunk; });
