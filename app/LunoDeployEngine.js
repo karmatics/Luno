@@ -63,49 +63,50 @@ class LunoDeployEngine {
   }
 
   static getRepoMappings() {
-    var defaults = {
-      'Luno': 'Luno',
-      'Library': 'Library',
-      'QuoraToys': 'QuoraToys',
-      'EconomicsOfAutomation': 'EconomicsOfAutomation',
-      'HomeSetup': 'HomeSetup',
-      'CadPlan': 'CadPlan',
-      'accuCad': 'accuCad',
-      'accudraw': 'accudraw',
-      'situation': 'situation',
-      'ValuationOfAccudraw': 'ValuationOfAccudraw',
-      'JobsAndAI': 'JobsAndAI',
-      'TouchController': 'TouchController',
-      'Comments': 'Comments',
-      'Community': 'Community',
-      'Voting': 'Voting',
-      'Basic3D': 'Basic3D',
-      'BasicsWithDialogBox': 'BasicsWithDialogBox',
-      'TriBlob': 'TriBlob',
-      'teacup': 'teacup',
-      'LegoDetective': 'LegoDetective',
-      'AlphabetGame': 'AlphabetGame',
-      'MathStorm': 'MathStorm',
-      'guessTheNoteGame': 'guessTheNoteGame',
-      'Calculator': 'Calculator',
-      'AardvarkPlaylist': 'AardvarkPlaylist',
-      'AardvarkExtension': 'AardvarkExtension',
-      'SvgStudio': 'SvgStudio',
-      'Es6Converter': 'Es6Converter',
-      'LunoParser': 'LunoParser',
-      'BookmarkletWorkshop': 'BookmarkletWorkshop',
-      'RunOnServerTools': 'RunOnServerTools'
-    };
+      var defaults = {
+        'Portal': 'Portal',
+        'Opus': 'Opus',
+        'HomeSetup': 'HomeSetup',
+        'Luno': 'Luno',
+        'Library': 'Library',
+        'QuoraToys': 'QuoraToys',
+        'EconomicsOfAutomation': 'EconomicsOfAutomation',
+        'CadPlan': 'CadPlan',
+        'accuCad': 'accuCad',
+        'accudraw': 'accudraw',
+        'situation': 'situation',
+        'ValuationOfAccudraw': 'ValuationOfAccudraw',
+        'JobsAndAI': 'JobsAndAI',
+        'TouchController': 'TouchController',
+        'Comments': 'Comments',
+        'Community': 'Community',
+        'Voting': 'Voting',
+        'Basic3D': 'Basic3D',
+        'BasicsWithDialogBox': 'BasicsWithDialogBox',
+        'TriBlob': 'TriBlob',
+        'teacup': 'teacup',
+        'LegoDetective': 'LegoDetective',
+        'AlphabetGame': 'AlphabetGame',
+        'MathStorm': 'MathStorm',
+        'guessTheNoteGame': 'guessTheNoteGame',
+        'Calculator': 'Calculator',
+        'AardvarkPlaylist': 'AardvarkPlaylist',
+        'AardvarkExtension': 'AardvarkExtension',
+        'SvgStudio': 'SvgStudio',
+        'Es6Converter': 'Es6Converter',
+        'LunoParser': 'LunoParser',
+        'BookmarkletWorkshop': 'BookmarkletWorkshop',
+        'RunOnServerTools': 'RunOnServerTools'
+      };
 
-    try {
-      if (typeof localStorage !== 'undefined') {
-        var raw = localStorage.getItem(LunoDeployEngine.REPO_MAP_KEY);
-        if (raw) return Object.assign(defaults, JSON.parse(raw));
-      }
-    } catch(e) {}
-    return defaults;
-  }
-
+      try {
+        if (typeof localStorage !== 'undefined') {
+          var raw = localStorage.getItem(LunoDeployEngine.REPO_MAP_KEY);
+          if (raw) return Object.assign(defaults, JSON.parse(raw));
+        }
+      } catch (e) {}
+      return defaults;
+    }
   static getRemoteRepoName(projectName) {
     var mappings = LunoDeployEngine.getRepoMappings();
     return mappings[projectName] || projectName;
