@@ -147,17 +147,25 @@ class OutboxQueue {
   static async executeSmartBundle(options = {}) {
       const currentTarget = (typeof ClientApp !== 'undefined' && ClientApp.getTargetProject) ? ClientApp.getTargetProject() : 'Luno';
       const includeInstructions = options.includeInstructions !== false;
-      const includeProjectLibrary = options.includeProjectLibrary !== false;
-      const includeAllLibrary = Boolean(options.includeAllLibrary);
-      const allowedFilePaths = options.allowedFilePaths || null;
+      const skipLibrary = Boolean(options.skipLibrary);
+      const includeProjectLibrary = !skipLibrary && (options.includeProjectLibrary !== false);
+      const includeAllLibrary = !skipLibrary && Boolean(options.includeAllLibrary);
+      const skipLegacyDuplicates = Boolean(options.skipLegacyDuplicates);
+      const allowedFilePaths = Array.isArray(options.allowedFilePaths) ? options.allowedFilePaths : (options.allowedFilePaths?.files || null);
       const visibilitySetName = options.visibilitySetName || null;
+
+      const binaryExts = ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.ico', '.bmp', '.tiff', '.hdr', '.exr', '.glb', '.gltf', '.bin', '.obj', '.fbx', '.mp4', '.mov', '.webm', '.avi', '.mp3', '.wav', '.ogg', '.m4a', '.woff', '.woff2', '.ttf', '.otf', '.eot', '.zip', '.tar', '.gz', '.pdf', '.exe', '.dmg', '.wasm'];
+      const isBinaryOrMedia = (p) => {
+        const low = String(p || '').toLowerCase().split('?')[0];
+        return binaryExts.some(ext => low.endsWith(ext));
+      };
 
       if (typeof ClientApp !== 'undefined' && ClientApp.showToast) {
         ClientApp.showToast(`Analyzing codebase for [${currentTarget}]...`, 'info', '⚡');
       }
 
-      let codeData = null;
-      if (typeof LunoApiClient !== 'undefined' && LunoApiClient.fetchAllCode) {
+      let codeData = options.preloadedCodeData || null;
+      if (!codeData && typeof LunoApiClient !== 'undefined' && LunoApiClient.fetchAllCode) {
         codeData = await LunoApiClient.fetchAllCode(currentTarget, {
           includeProjectLibrary: includeProjectLibrary,
           includeAllLibrary: includeAllLibrary
@@ -175,7 +183,6 @@ class OutboxQueue {
       const q = OutboxQueue.queue;
       let addedCount = 0;
 
-      // 1. Separate Protocol Instructions item with idempotency guard
       const getInst = (typeof LunoPromptInstructions !== 'undefined') &&
         (LunoPromptInstructions.getSystemInstructions || LunoPromptInstructions.assembleFullInstructions);
 
@@ -192,7 +199,6 @@ class OutboxQueue {
         }
       }
 
-      // Index all files currently present in any existing Outbox item to prevent duplicate payloads
       const existingQueuedFiles = new Set();
       q.forEach(it => {
         if (Array.isArray(it.files)) {
@@ -208,15 +214,27 @@ class OutboxQueue {
 
       Object.keys(filesMap).forEach(fPath => {
         const cleanPath = fPath.replace(/\\/g, '/').replace(/^\/+/, '');
-        if (Array.isArray(allowedFilePaths) && allowedFilePaths.length > 0) {
+        if (isBinaryOrMedia(cleanPath)) return;
+
+        const isLib = cleanPath.startsWith('Library/') || cleanPath.toLowerCase().includes('/library/');
+        if (isLib && skipLibrary) return;
+
+        if (!isLib && skipLegacyDuplicates && !Array.isArray(allowedFilePaths)) {
+          const low = cleanPath.toLowerCase();
+          if (low.includes('/content/') || low.includes('/src/') || low.includes('/recovered_content/') || (low.includes('/state/') && low.includes('recon'))) {
+            return;
+          }
+        }
+
+        if (!isLib && Array.isArray(allowedFilePaths) && allowedFilePaths.length > 0) {
           const matchesSet = allowedFilePaths.some(p => {
-            const cp = p.replace(/\\/g, '/').replace(/^\/+/, '');
+            const cp = String(p || '').replace(/\\/g, '/').replace(/^\/+/, '');
             return cleanPath === cp || cleanPath.endsWith('/' + cp) || cp.endsWith('/' + cleanPath);
           });
           if (!matchesSet) return;
         }
 
-        if (cleanPath.startsWith('Library/') || cleanPath.toLowerCase().includes('/library/')) {
+        if (isLib) {
           libraryFiles[cleanPath] = filesMap[fPath];
         } else {
           projectFiles[cleanPath] = filesMap[fPath];
@@ -234,15 +252,14 @@ class OutboxQueue {
           const isJson = fp.endsWith('.json');
           const tag = isStyle ? 'style' : (isHtml ? 'template' : (isJson ? 'script type="application/json"' : 'script'));
           const closingTag = isStyle ? 'style' : (isHtml ? 'template' : 'script');
-          out += `<${tag} data-file="${fp}">\n${content}\n<\/${closingTag}>\n\n`;
+          out += `<${tag} data-file="${fp}">\n${content}\n</${closingTag}>\n\n`;
         });
         out += '```\n';
         return out;
       };
 
-      // 2. Shared Library Bundle with smart deduplication
       const libKeys = Object.keys(libraryFiles);
-      if (libKeys.length > 0) {
+      if (libKeys.length > 0 && !skipLibrary) {
         const newLibKeys = libKeys.filter(k => !existingQueuedFiles.has(k));
         const dupLibCount = libKeys.length - newLibKeys.length;
 
@@ -265,7 +282,6 @@ class OutboxQueue {
         }
       }
 
-      // 3. Project Source Bundle with smart deduplication
       const projKeys = Object.keys(projectFiles);
       if (projKeys.length > 0) {
         const newProjKeys = projKeys.filter(k => !existingQueuedFiles.has(k));

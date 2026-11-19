@@ -224,86 +224,102 @@ class LunoApiClient {
         const pParam = effectiveProject ? ('&project=' + encodeURIComponent(effectiveProject)) : '';
         return await LunoApiClient.safeJsonFetch('/api/fs/read?path=' + encodeURIComponent(cleanFile) + pParam);
       }
+
   static async fetchAllCode(project = '', options = {}) {
-    const proj = project || (typeof ClientApp !== 'undefined' && ClientApp.getTargetProject ? ClientApp.getTargetProject() : 'Luno');
-    const opts = (typeof options === 'boolean') ? { includeAllLibrary: options } : (options || {});
-    const includeProjectLibrary = (opts.includeProjectLibrary !== false); // Default: include manifest-declared libraries
-    const includeAllLibrary = Boolean(opts.includeAllLibrary || opts.includeLibrary);
+      const proj = project || (typeof ClientApp !== 'undefined' && ClientApp.getTargetProject ? ClientApp.getTargetProject() : 'Luno');
+      const opts = (typeof options === 'boolean') ? { includeAllLibrary: options } : (options || {});
+      const includeProjectLibrary = (opts.includeProjectLibrary !== false);
+      const includeAllLibrary = Boolean(opts.includeAllLibrary || opts.includeLibrary);
 
-    if (!LunoApiClient.isStaticMode()) {
+      const binaryExts = ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.ico', '.bmp', '.tiff', '.hdr', '.exr', '.glb', '.gltf', '.bin', '.obj', '.fbx', '.mp4', '.mov', '.webm', '.avi', '.mp3', '.wav', '.ogg', '.m4a', '.woff', '.woff2', '.ttf', '.otf', '.eot', '.zip', '.tar', '.gz', '.pdf', '.exe', '.dmg', '.wasm'];
+      const isBinaryPath = (p) => {
+        const low = String(p || '').toLowerCase().split('?')[0];
+        return binaryExts.some(ext => low.endsWith(ext));
+      };
+
+      if (!LunoApiClient.isStaticMode()) {
+        try {
+          const params = [];
+          if (proj) params.push('project=' + encodeURIComponent(proj));
+          if (includeAllLibrary) {
+            params.push('allLibrary=true');
+          } else if (includeProjectLibrary) {
+            params.push('projectLibrary=true');
+          }
+          const q = params.length > 0 ? ('?' + params.join('&')) : '';
+          const data = await LunoApiClient.safeJsonFetch('/api/all-code' + q);
+          if (data && data.success && data.filesMap && Object.keys(data.filesMap).length > 0) {
+            const cleanMap = {};
+            const cleanManifest = [];
+            Object.keys(data.filesMap).forEach(k => {
+              if (!isBinaryPath(k)) {
+                cleanMap[k] = data.filesMap[k];
+                cleanManifest.push(k);
+              }
+            });
+            return { ...data, manifest: cleanManifest, filesMap: cleanMap };
+          }
+        } catch (serverErr) {
+          console.warn('[LunoApiClient] /api/all-code fallback to manifest assembly:', serverErr.message);
+        }
+      }
+
+      const manifest = [];
+      const filesMap = {};
+
+      let meta = {};
       try {
-        const params = [];
-        if (proj) params.push('project=' + encodeURIComponent(proj));
-        if (includeAllLibrary) {
-          params.push('allLibrary=true');
-        } else if (includeProjectLibrary) {
-          params.push('projectLibrary=true');
+        const metaRes = await LunoApiClient.fetchFsRead('luno.json', proj);
+        if (metaRes && metaRes.content) {
+          meta = JSON.parse(metaRes.content);
         }
-        const q = params.length > 0 ? ('?' + params.join('&')) : '';
-        const data = await LunoApiClient.safeJsonFetch('/api/all-code' + q);
-        if (data && data.success && data.filesMap && Object.keys(data.filesMap).length > 0) {
-          return data;
-        }
-      } catch (serverErr) {
-        console.warn('[LunoApiClient] /api/all-code fallback to manifest assembly:', serverErr.message);
+      } catch (e) {}
+
+      const discovered = new Set(['luno.json', 'index.html']);
+      [].concat(meta.main || []).forEach(p => { if (p && !isBinaryPath(p)) discovered.add(p); });
+      [].concat(meta.styles || []).forEach(p => { if (p && !isBinaryPath(p)) discovered.add(p); });
+      [].concat(meta.docs || []).forEach(p => { if (p && !isBinaryPath(p)) discovered.add(p); });
+      [].concat(meta.files || []).forEach(p => { if (p && !isBinaryPath(p)) discovered.add(p); });
+      if (meta.entrypoint && meta.entrypoint.file && !isBinaryPath(meta.entrypoint.file)) {
+        discovered.add(meta.entrypoint.file);
       }
-    }
 
-    const manifest = [];
-    const filesMap = {};
-
-    let meta = {};
-    try {
-      const metaRes = await LunoApiClient.fetchFsRead('luno.json', proj);
-      if (metaRes && metaRes.content) {
-        meta = JSON.parse(metaRes.content);
+      if (includeProjectLibrary || includeAllLibrary || proj.toLowerCase() === 'library') {
+        [].concat(meta.library || []).forEach(p => {
+          if (p && !isBinaryPath(p)) {
+            const cleanLib = p.replace(/^(?:Library|library)\//, '');
+            discovered.add('Library/' + cleanLib);
+          }
+        });
       }
-    } catch(e) {}
 
-    const discovered = new Set(['luno.json', 'index.html']);
-    [].concat(meta.main || []).forEach(p => { if (p) discovered.add(p); });
-    [].concat(meta.styles || []).forEach(p => { if (p) discovered.add(p); });
-    [].concat(meta.docs || []).forEach(p => { if (p) discovered.add(p); });
-    [].concat(meta.files || []).forEach(p => { if (p) discovered.add(p); });
-    if (meta.entrypoint && meta.entrypoint.file) discovered.add(meta.entrypoint.file);
+      const fileList = Array.from(discovered);
+      for (const rawFile of fileList) {
+        const cleanRel = LunoApiClient.cleanPath(rawFile);
+        if (isBinaryPath(cleanRel)) continue;
+        const isLibFile = cleanRel.startsWith('Library/');
+        const readProject = isLibFile ? 'Library' : proj;
+        const readPath = isLibFile ? cleanRel.slice(8) : cleanRel;
 
-    // Include manifest-declared library dependencies by default
-    if (includeProjectLibrary || includeAllLibrary || proj.toLowerCase() === 'library') {
-      [].concat(meta.library || []).forEach(p => {
-        if (p) {
-          const cleanLib = p.replace(/^(?:Library|library)\//, '');
-          discovered.add('Library/' + cleanLib);
+        const readRes = await LunoApiClient.fetchFsRead(readPath, readProject);
+        if (readRes && readRes.success && readRes.content !== undefined) {
+          let canonicalKey = cleanRel;
+          if (!canonicalKey.startsWith('Library/') && !canonicalKey.startsWith(proj + '/')) {
+            canonicalKey = proj + '/' + canonicalKey;
+          }
+          manifest.push(canonicalKey);
+          filesMap[canonicalKey] = readRes.content;
         }
-      });
-    }
-
-    const fileList = Array.from(discovered);
-    for (const rawFile of fileList) {
-      const cleanRel = LunoApiClient.cleanPath(rawFile);
-      const isLibFile = cleanRel.startsWith('Library/');
-      const readProject = isLibFile ? 'Library' : proj;
-      const readPath = isLibFile ? cleanRel.slice(8) : cleanRel;
-
-      const readRes = await LunoApiClient.fetchFsRead(readPath, readProject);
-      if (readRes && readRes.success && readRes.content !== undefined) {
-        let canonicalKey = cleanRel;
-        if (!canonicalKey.startsWith('Library/') && !canonicalKey.startsWith(proj + '/')) {
-          canonicalKey = proj + '/' + canonicalKey;
-        }
-        manifest.push(canonicalKey);
-        filesMap[canonicalKey] = readRes.content;
       }
+
+      return {
+        success: true,
+        activeProjectName: proj,
+        activeRootDir: LunoApiClient.isStaticMode() ? 'IndexedDB Storage' : 'Project Root',
+        manifest: manifest,
+        filesMap: filesMap
+      };
     }
-
-    return {
-      success: true,
-      activeProjectName: proj,
-      activeRootDir: LunoApiClient.isStaticMode() ? 'IndexedDB Storage' : 'Project Root',
-      manifest: manifest,
-      filesMap: filesMap
-    };
-  }
-
   static async savePayload(payload, project = '') {
         let payloadObj = payload;
         if (typeof payload === 'string') {

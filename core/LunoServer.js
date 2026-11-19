@@ -18,6 +18,20 @@ class LunoServer {
         const manifest = [];
         const projFolder = targetProj || path.basename(projDir) || 'Luno';
 
+        const binaryExts = new Set([
+          '.png', '.jpg', '.jpeg', '.gif', '.webp', '.ico', '.bmp', '.tiff',
+          '.hdr', '.exr', '.glb', '.gltf', '.bin', '.obj', '.fbx',
+          '.mp4', '.mov', '.webm', '.avi', '.mp3', '.wav', '.ogg', '.m4a',
+          '.woff', '.woff2', '.ttf', '.otf', '.eot',
+          '.zip', '.tar', '.gz', '.pdf', '.exe', '.dmg', '.dll', '.so', '.wasm'
+        ]);
+        const allowedTextExts = new Set(['.js', '.mjs', '.json', '.html', '.htm', '.css', '.svg', '.md', '.txt']);
+        const skipDirs = new Set([
+          'node_modules', 'vendor', 'acorn', 'simpleversion', 'archive',
+          'assets', 'images', 'thumbs', 'videos', 'audio', 'fonts',
+          'recovered_content', 'backup', 'backups'
+        ]);
+
         function scanTextFiles(dir, depth, relBase = '') {
           if (depth > 6 || !fs.existsSync(dir)) return;
           const list = fs.readdirSync(dir, { withFileTypes: true });
@@ -28,29 +42,17 @@ class LunoServer {
             if (
               name.startsWith('.') ||
               name.startsWith('_') ||
-              name === 'node_modules' ||
-              lowerName === 'vendor' ||
-              lowerName === 'acorn' ||
-              name.endsWith('.bak') ||
-              name.includes('.old_') ||
+              skipDirs.has(lowerName) ||
+              lowerName.endsWith('.bak') ||
+              lowerName.includes('.old_') ||
               name.includes('Copy') ||
               name === 'bundle.js' ||
-              name === 'package-lock.json' ||
-              name === 'simpleVersion' ||
-              name === 'archive'
+              name === 'package-lock.json'
             ) continue;
 
-            if (lowerName === 'library' && projFolder.toLowerCase() !== 'library') {
-              continue;
-            }
-
-            if (lowerName === 'playlists' && projFolder === 'AardvarkPlaylist') {
-              continue;
-            }
-
-            if (lowerName === 'test' && projFolder === 'Luno') {
-              continue;
-            }
+            if (lowerName === 'library' && projFolder.toLowerCase() !== 'library') continue;
+            if (lowerName === 'playlists' && projFolder === 'AardvarkPlaylist') continue;
+            if (lowerName === 'test' && projFolder === 'Luno') continue;
 
             const currentRel = relBase ? (relBase + '/' + name) : name;
             const fullP = path.join(dir, name);
@@ -59,22 +61,19 @@ class LunoServer {
               scanTextFiles(fullP, depth + 1, currentRel);
             } else {
               const ext = path.extname(name).toLowerCase();
-              const textExts = ['.js', '.mjs', '.json', '.html', '.htm', '.css', '.svg'];
-              if (ext === '.md' && !currentRel.includes('archive/')) {
-                textExts.push('.md');
-              }
+              if (binaryExts.has(ext) || !allowedTextExts.has(ext)) continue;
+              if (ext === '.md' && currentRel.includes('archive/')) continue;
+              if (currentRel.startsWith('state/') && lowerName.includes('recon') && ext === '.json') continue;
 
-              if (textExts.includes(ext)) {
-                try {
-                  const stat = fs.statSync(fullP);
-                  if (stat.size < 500000) {
-                    const fileData = fs.readFileSync(fullP, 'utf8');
-                    const key = projFolder + '/' + currentRel;
-                    manifest.push(key);
-                    filesMap[key] = fileData;
-                  }
-                } catch(e) {}
-              }
+              try {
+                const stat = fs.statSync(fullP);
+                if (stat.size < 350000) {
+                  const fileData = fs.readFileSync(fullP, 'utf8');
+                  const key = projFolder + '/' + currentRel;
+                  manifest.push(key);
+                  filesMap[key] = fileData;
+                }
+              } catch (e) {}
             }
           }
         }
@@ -93,7 +92,7 @@ class LunoServer {
             try {
               const meta = JSON.parse(fs.readFileSync(lunoJsonP, 'utf8'));
               libsToInclude = Array.isArray(meta.library) ? meta.library : [];
-            } catch(e) {}
+            } catch (e) {}
           }
 
           libsToInclude.forEach(lib => {
@@ -102,13 +101,16 @@ class LunoServer {
             const libFull = path.join(libraryDir, cleanLib);
             if (fs.existsSync(libFull)) {
               try {
-                const libContent = fs.readFileSync(libFull, 'utf8');
-                const key = 'Library/' + cleanLib;
-                if (!manifest.includes(key)) {
-                  manifest.push(key);
-                  filesMap[key] = libContent;
+                const stat = fs.statSync(libFull);
+                if (stat.size < 350000) {
+                  const libContent = fs.readFileSync(libFull, 'utf8');
+                  const key = 'Library/' + cleanLib;
+                  if (!manifest.includes(key)) {
+                    manifest.push(key);
+                    filesMap[key] = libContent;
+                  }
                 }
-              } catch(e) {}
+              } catch (e) {}
             }
           });
         }
@@ -120,10 +122,10 @@ class LunoServer {
           manifest: manifest,
           filesMap: filesMap
         });
-      } catch(err) {
+      } catch (err) {
         LunoServer.sendJSON(res, 500, { success: false, error: err.message, stack: err.stack });
       }
-  }
+    }
   static getRootDir() {
     if (!LunoServer._rootDir) {
       const envRoot = process.env.LUNO_ROOT || process.env.WORKSPACE_ROOT;
